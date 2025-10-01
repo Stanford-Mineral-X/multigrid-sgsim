@@ -1,0 +1,15 @@
+.venv/
+venv/
+__pycache__/
+dist/
+build/
+*.egg-info/
+.ipynb_checkpoints/
+.git.bak/
+.venv/
+venv/
+__pycache__/
+dist/
+build/
+*.egg-info/
+.ipynb_checkpoints/
