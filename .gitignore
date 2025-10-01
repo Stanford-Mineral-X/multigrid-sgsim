@@ -1,15 +1,41 @@
+# --- Python environments ---
 .venv/
 venv/
+ENV/
+env/
+
+# --- Python cache / build ---
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# --- Packaging / build outputs ---
 dist/
 build/
 *.egg-info/
+.eggs/
+
+# --- Jupyter ---
 .ipynb_checkpoints/
+.jupyter/
+*.nbconvert.ipynb
+
+# --- IDE / editor junk ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+
+# --- Old backup repos (don’t commit old .git!) ---
 .git.bak/
-.venv/
-venv/
-__pycache__/
-dist/
-build/
-*.egg-info/
-.ipynb_checkpoints/
+
+# --- Other project-specific ignores ---
+# Example data outputs, scratch, logs, etc.
+*.log
+*.tmp
