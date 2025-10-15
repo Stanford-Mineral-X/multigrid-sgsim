@@ -1,5 +1,6 @@
 import matplotlib.colors as colors
 import numpy as np
+import skgstat as skg
 
 # define the Geosoft K65 colormap
 def geosoft_cmap_k65():
@@ -47,3 +48,13 @@ def geosoft_cmap_k65():
 
   geosoft_cmap_k65 = colors.LinearSegmentedColormap.from_list("geosoft_cmap_k65", geosoft_cmap_k65, N=1000)
   return geosoft_cmap_k65
+
+
+def cluster_variogram(df_fl, value_or_residual, idx_cluster, maxlag, n_lags):
+
+    df = df_fl[df_fl['cluster']==idx_cluster]
+    coords = df[['x','y']].values
+    values_for_variogram = df[value_or_residual]
+    Vgram = skg.Variogram(coords, values_for_variogram, bin_func = "even", n_lags = n_lags, maxlag = maxlag, normalize=False)
+
+    return Vgram
