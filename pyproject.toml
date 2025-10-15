@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "Joshua Rines" }]
 
-# Runtime deps only (no pins). Pip will install these automatically.
+# Runtime dependencies
 dependencies = [
   "numpy>=1.24",
   "pandas>=2",
