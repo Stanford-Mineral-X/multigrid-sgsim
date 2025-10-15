@@ -22,7 +22,7 @@ build/
 .jupyter/
 *.nbconvert.ipynb
 
-# --- IDE / editor junk ---
+# --- IDE / editor ---
 .vscode/
 .idea/
 *.swp
