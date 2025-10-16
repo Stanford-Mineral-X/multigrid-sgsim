@@ -8,6 +8,7 @@ pip install "git+https://github.com/Stanford-Mineral-X/multigrid-sgsim.git@main#
 ```
 ## Directory Tree
 ```
+.
 ├── examples
 │   ├── data
 │   │   ├── fl_xyvc.csv
