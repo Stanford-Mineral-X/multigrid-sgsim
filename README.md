@@ -7,6 +7,7 @@ This repository houses the multigrid simulation method, a Python package for sto
 pip install "git+https://github.com/Stanford-Mineral-X/multigrid-sgsim.git@main#egg=multigrid-sgsim"
 ```
 ## Directory Tree
+```
 ├── examples
 │   ├── data
 │   │   ├── fl_xyvc.csv
@@ -27,6 +28,7 @@ pip install "git+https://github.com/Stanford-Mineral-X/multigrid-sgsim.git@main#
 │       └── utils.py
 └── tests
     └── test_imports.py
+```
 
 ## License
 This code is released for non-commercial and research purposes. For commercial use, please contact the authors.
