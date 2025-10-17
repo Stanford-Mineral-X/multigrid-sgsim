@@ -35,8 +35,9 @@ cd multigrid-sgsim
 ```
 Launch demo notebook (pip install jupyter if not already installed):
 ```bash
-jupyter notebook examples/demo_mgsim.ipynb # or examples/demo_asm.ipynb
+jupyter notebook ./examples/demo_mgsim.ipynb # or ./examples/demo_asm.ipynb
 ```
+Run either notebook (./examples/demo_asm.ipynb or ./examples/demo_mgsim.ipynb) for a demonstration of generating interpolated grids with the multigrid simulation (MGSIM) methodology.
 
 
 ## Repo Tree
