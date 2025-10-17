@@ -25,5 +25,8 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["multigrid_sgsim*"]
+where = ["src"]
+
+# [tool.setuptools.packages.find]
+# where = ["."]
+# include = ["multigrid_sgsim*"]
