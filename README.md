@@ -11,16 +11,32 @@ Demonstration of MGSIM iterations generating one realization.
 
 ## Getting Started
 ### Installation
-create and activate a clean environment:
+Create and activate a clean environment:
 ```bash
 python -m venv venv_mgsim
 source venv_mgsim/bin/activate   # (Windows: venv_mgsim\Scripts\activate)
 ```
-upgrade pip and install the multigrid_sgsim package:
+Upgrade pip and install the multigrid_sgsim package:
 ```bash
 python -m pip install -U pip
 pip install git+https://github.com/Stanford-Mineral-X/multigrid-sgsim.git
 ```
+
+### Run demo notebooks
+clone the repository:
+```bash
+git clone https://github.com/Stanford-Mineral-X/multigrid-sgsim.git
+```
+Navigate to the multigrid-sgsim repository you just cloned.
+```bash
+cd multigrid-sgsim
+```
+Launch demo notebook
+```bash
+jupyter notebook examples/demo_mgsim.ipynb # or examples/demo_asm.ipynb
+```
+
+
 ## Repo Tree
 ```
 .
