@@ -14,7 +14,7 @@ Demonstration of MGSIM iterations generating one realization.
 ```bash
 pip install "git+https://github.com/Stanford-Mineral-X/multigrid-sgsim.git@main#egg=multigrid-sgsim"
 ```
-## Directory Tree
+## Repo Tree
 ```
 .
 ├── examples
