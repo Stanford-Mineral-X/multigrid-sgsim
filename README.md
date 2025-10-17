@@ -2,7 +2,9 @@
 This repository houses the multigrid simulation method, a Python package for stochastic interpolation of airborne geophysical data.
 This is the software supporting the manuscript:
 
-"**Interpolation of large-scale airborne geophysical data with uncertainty quantifcation**" (Authors: Joshua H. Rines, Zhen Yin, Jonas Kloeckner, Jef Caers),
+"**Interpolation of large-scale airborne geophysical data with uncertainty quantifcation**" 
+
+(Authors: Joshua H. Rines, Zhen Yin, Jonas Kloeckner, Jef Caers),
 
 which has been submitted to the journal [Computers \& Geosciences](https://www.sciencedirect.com/journal/computers-and-geosciences) for review.
 
