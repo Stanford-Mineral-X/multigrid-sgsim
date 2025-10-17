@@ -20,16 +20,18 @@ pip install "git+https://github.com/Stanford-Mineral-X/multigrid-sgsim.git@main#
 ├── examples
 │   ├── data
 │   │   ├── fl_xyvc.csv
-│   │   ├── gt_xyvc.csv
-│   │   ├── synthetic_flightlines.csv
-│   │   └── synthetic_magnetic_groundtruth.csv
+│   │   └── gt_xyvc.csv
 │   ├── demo_asm.ipynb
 │   └── demo_mgsim.ipynb
+├── figures
+│   ├── asm_synthdata.png
+│   └── mgsim_iterations.png
 ├── pyproject.toml
 ├── README.md
 ├── src
 │   └── multigrid_sgsim
 │       ├── __init__.py
+│       ├── asm.py
 │       ├── mgsim.py
 │       ├── sampling.py
 │       ├── segmenting.py
