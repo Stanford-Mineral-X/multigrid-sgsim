@@ -23,7 +23,7 @@ pip install git+https://github.com/Stanford-Mineral-X/multigrid-sgsim.git
 ```
 
 ### Run demo notebooks
-clone the repository:
+Clone the repository:
 ```bash
 git clone https://github.com/Stanford-Mineral-X/multigrid-sgsim.git
 ```
