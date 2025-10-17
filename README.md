@@ -27,11 +27,11 @@ clone the repository:
 ```bash
 git clone https://github.com/Stanford-Mineral-X/multigrid-sgsim.git
 ```
-Navigate to the multigrid-sgsim repository you just cloned.
+Navigate to the multigrid-sgsim repository you just cloned:
 ```bash
 cd multigrid-sgsim
 ```
-Launch demo notebook
+Launch demo notebook (pip install jupyter if not already installed):
 ```bash
 jupyter notebook examples/demo_mgsim.ipynb # or examples/demo_asm.ipynb
 ```
