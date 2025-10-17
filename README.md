@@ -1,6 +1,10 @@
-# Multigrid Simulation
+# Multigrid Simulation: multigrid-sgsim
 This repository houses the multigrid simulation method, a Python package for stochastic interpolation of airborne geophysical data.
 
+## Automatic Segmentation Method
+![ASM example](figures/asm_synthdata.png)
+
+# Multigrid Simulation
 ![MGSIM iterations example](figures/mgsim_iterations.png)
 
 ## Getting Started
