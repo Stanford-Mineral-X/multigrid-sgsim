@@ -71,7 +71,12 @@ def mgsim(
         df_obspts = df[df['set'] == 1].copy()
         
         # mg sample residuals at set resolution
-        df_mgsmpl = subsample_dataframe(df_obspts, column_for_sampling='residual', spacing=mg_resol)
+        if i<len(mg_resols)-1:
+            df_mgsmpl = subsample_dataframe(df_obspts, column_for_sampling='residual', spacing=mg_resol)
+            print(f" subsmampled to {len(df_mgsmpl)} points ")
+        else:
+            df_mgsmpl = df_obspts.copy()  # last iteration uses all obspts
+            print(f" last iteration, using all {len(df_mgsmpl)} observation points (no subsampling) ")
 
         # sequential gaussian simulation of residuals subset
         mgsgs = gs.Interpolation.cluster_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, kk, num_points, df_gamma, radius)
