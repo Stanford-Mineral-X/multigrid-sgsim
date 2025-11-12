@@ -13,7 +13,9 @@ def mgsim(
     zz: str = 'residual',
     kk: str = 'cluster',
     num_points: int = 10,
-    radius: float = 40,
+    radius: float = 400,
+    # radii: list = [400, 300, 200, 150, 100],
+    sgs_or_krige: str = 'sgs',
 ):
 
     """
@@ -73,13 +75,20 @@ def mgsim(
         # mg sample residuals at set resolution
         if i<len(mg_resols)-1:
             df_mgsmpl = subsample_dataframe(df_obspts, column_for_sampling='residual', spacing=mg_resol)
-            print(f" subsmampled to {len(df_mgsmpl)} points ")
+            # print(f" subsmampled to {len(df_mgsmpl)} points, search radius = {1*mg_resol} ")
         else:
             df_mgsmpl = df_obspts.copy()  # last iteration uses all obspts
-            print(f" last iteration, using all {len(df_mgsmpl)} observation points (no subsampling) ")
+            # print(f" last iteration, using all {len(df_mgsmpl)} observation points (no subsampling), search radius = {1*mg_resol} ")
 
         # sequential gaussian simulation of residuals subset
-        mgsgs = gs.Interpolation.cluster_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, kk, num_points, df_gamma, radius)
+        # radius = 1*mg_resol  # set search radius to twice the grid spacing
+        # radius = radii[i]
+        if sgs_or_krige=='sgs':
+            mgsgs = gs.Interpolation.cluster_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, kk, num_points, df_gamma, radius)
+        elif sgs_or_krige=='krige':
+            # df_gamma = [azimuth, nugget, major_range, minor_range, sill, variogram_type]
+            vario = [df_gamma['Variogram'][0][0], df_gamma['Variogram'][0][1], df_gamma['Variogram'][0][2], df_gamma['Variogram'][0][3], df_gamma['Variogram'][0][4], df_gamma['Variogram'][0][5]]
+            mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius) 
 
         # update trend on grid and obspts (trend = trend + simulated_residuals)
         df['newtrend'] = df['newtrend'] + mgsgs # NOTE THIS MAYBRE WE COULD MAKE MORE ROBUST TO ENSURE THAT WE ARE ADDING THE RIGHT SIMULATED VALUE AT THE RIGHT LOCATION TO THE TREND THERE
