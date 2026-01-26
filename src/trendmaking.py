@@ -1,7 +1,7 @@
 from sklearn.cluster import AgglomerativeClustering
 from scipy.interpolate import RBFInterpolator
 import numpy as np
-from .sampling import stratified_sample
+from sampling import stratified_sample
 
 def make_trend(fl_xyvc, grid_xyc, smoothing, linespacing):
 

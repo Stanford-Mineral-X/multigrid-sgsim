@@ -3,7 +3,7 @@ import pandas as pd
 import gstatsim as gs
 from typing import Optional, Union, Dict
 from sklearn.preprocessing import QuantileTransformer
-from .sampling import subsample_dataframe
+from sampling import subsample_dataframe
 
 
 def mgsim(
@@ -122,13 +122,14 @@ def mgsim_nst(
     kk: str = 'cluster',
     num_points: int = 10,
     radius: float = 400,
-    # radii: list = [400, 300, 200, 150, 100],
     sgs_or_krige: str = 'sgs',
     nst_trans: Optional[Union[QuantileTransformer, Dict[int, QuantileTransformer]]] = None,
+    clip_nst: bool = True,
+    clip_percentile: float = 100.0,
+    debug: bool = False,
 ):
-
     """
-    Perform multigrid sequential Gaussian simulation (MGSGIM) to update the residual field and trend of a dataset.
+    Perform multigrid sequential Gaussian simulation (MGSGIM) with Normal Score Transform.
 
     Parameters:
     -----------
@@ -145,11 +146,20 @@ def mgsim_nst(
         Variogram model parameters for the simulation (region-specific variograms; see gstatsim documentation for more details)
     xx, yy, zz, kk : str
         Column names in df_xyvtcs for x, y, residual, and cluster ID respectively
-        Defaults: 'x', 'y', 'residual', 'cluster'
+        Defaults: 'x', 'y', 'Nresidual', 'cluster'
     num_points : int
         Number of nearest neighbors to use in SGS step
-    radius: float
+    radius : float
         Search radius for nearest neighbors in SGS step
+    nst_trans : transformer object
+        Fitted sklearn transformer (QuantileTransformer or PowerTransformer)
+    clip_nst : bool
+        If True (default), clip simulated values in normal space before inverse transforming.
+    clip_percentile : float
+        Percentile for clipping bounds (default 100.0 = use full range).
+        Use e.g. 99.0 to clip to 1st-99th percentile of transformed data.
+    debug : bool
+        If True, print debugging statistics at each iteration.
 
     Returns:
     --------
@@ -157,7 +167,7 @@ def mgsim_nst(
         DataFrame with updated 'newtrend' column after multigrid SGSIM; retains all original rows and indices.
         'newtrend' is NaN for rows where 'cluster' < 0 (not simulated).
     """
-    
+
     # keep a copy of ALL rows
     df_all = df_xyvtcs.copy()
 
@@ -171,59 +181,121 @@ def mgsim_nst(
     # compute initial residual
     df['residual'] = df['value'] - df['trend']
 
-    # normal score the initial residual
-    data2norm = df['residual'].values.reshape(-1,1)
+    # normal score the initial residual and store clip bounds
+    data2norm = df['residual'].values.reshape(-1, 1)
     df['Nresidual'] = nst_trans.transform(data2norm)
+
+    # store clipping bounds based on percentile (use observation points only)
+    obs_mask = df['set'] == 1
+    if clip_nst:
+        obs_Nresidual = df.loc[obs_mask, 'Nresidual'].values
+        obs_residual = df.loc[obs_mask, 'residual'].values
+        if clip_percentile >= 100.0:
+            nst_min = obs_Nresidual.min()
+            nst_max = obs_Nresidual.max()
+            res_min = obs_residual.min()
+            res_max = obs_residual.max()
+        else:
+            lower_pct = (100.0 - clip_percentile) / 2.0
+            upper_pct = 100.0 - lower_pct
+            nst_min = np.percentile(obs_Nresidual, lower_pct)
+            nst_max = np.percentile(obs_Nresidual, upper_pct)
+            res_min = np.percentile(obs_residual, lower_pct)
+            res_max = np.percentile(obs_residual, upper_pct)
+
+    if debug:
+        print("=== INITIAL STATE ===")
+        print(f"  Original residuals: min={df['residual'].min():.2f}, max={df['residual'].max():.2f}, "
+              f"mean={df['residual'].mean():.2f}, std={df['residual'].std():.2f}")
+        print(f"  Nresidual: min={df['Nresidual'].min():.3f}, max={df['Nresidual'].max():.3f}, "
+              f"mean={df['Nresidual'].mean():.3f}, std={df['Nresidual'].std():.3f}")
+        if clip_nst:
+            print(f"  Clipping bounds (normal space): [{nst_min:.3f}, {nst_max:.3f}]")
+            print(f"  Clipping bounds (original space): [{res_min:.2f}, {res_max:.2f}]")
+            print(f"  (percentile={clip_percentile})")
 
     # initialize a 'newtrend' column
     df['newtrend'] = df['trend'].copy()
 
     # loop over resolutions
-    for (i,mg_resol) in enumerate(mg_resols):
+    for (i, mg_resol) in enumerate(mg_resols):
         print(f"MultiGrid iteration {i+1}: Processing resolution {mg_resol}")
 
         # get sub-dataframe just at observation points ('set' column = 1)
         df_obspts = df[df['set'] == 1].copy()
-        
+
         # mg sample residuals at set resolution
-        if i<len(mg_resols)-1:
+        if i < len(mg_resols) - 1:
             df_mgsmpl = subsample_dataframe(df_obspts, column_for_sampling='residual', spacing=mg_resol)
-            # print(f" subsmampled to {len(df_mgsmpl)} points, search radius = {1*mg_resol} ")
         else:
             df_mgsmpl = df_obspts.copy()  # last iteration uses all obspts
-            # print(f" last iteration, using all {len(df_mgsmpl)} observation points (no subsampling), search radius = {1*mg_resol} ")
+
+        if debug:
+            print(f"  Conditioning data: {len(df_mgsmpl)} points")
+            print(f"  Nresidual (conditioning): min={df_mgsmpl['Nresidual'].min():.3f}, "
+                  f"max={df_mgsmpl['Nresidual'].max():.3f}, mean={df_mgsmpl['Nresidual'].mean():.3f}")
 
         # sequential gaussian simulation of residuals subset
-        # radius = 1*mg_resol  # set search radius to twice the grid spacing
-        # radius = radii[i]
-        if sgs_or_krige=='sgs':
+        if sgs_or_krige == 'sgs':
             mgsgs = gs.Interpolation.cluster_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, kk, num_points, df_gamma, radius)
-        elif sgs_or_krige=='krige':
-            # df_gamma = [azimuth, nugget, major_range, minor_range, sill, variogram_type]
-            vario = [df_gamma['Variogram'][0][0], df_gamma['Variogram'][0][1], df_gamma['Variogram'][0][2], df_gamma['Variogram'][0][3], df_gamma['Variogram'][0][4], df_gamma['Variogram'][0][5]]
-            mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius) 
+        elif sgs_or_krige == 'krige':
+            vario = [df_gamma['Variogram'][0][0], df_gamma['Variogram'][0][1],
+                     df_gamma['Variogram'][0][2], df_gamma['Variogram'][0][3],
+                     df_gamma['Variogram'][0][4], df_gamma['Variogram'][0][5]]
+            mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius)
 
-        # inverse transform the interpolated residuals
-        data2inorm = np.asarray(mgsgs).reshape(-1,1)
-        mgs_invtrans = nst_trans.inverse_transform(data2inorm).ravel() 
+        # convert to array for processing
+        data2inorm = np.asarray(mgsgs).reshape(-1, 1)
+
+        if debug:
+            n_below = np.sum(data2inorm < nst_min) if clip_nst else 0
+            n_above = np.sum(data2inorm > nst_max) if clip_nst else 0
+            print(f"  SGS output (normal space): min={data2inorm.min():.3f}, max={data2inorm.max():.3f}, "
+                  f"mean={data2inorm.mean():.3f}, std={data2inorm.std():.3f}")
+            if clip_nst:
+                print(f"  Values outside clip bounds: {n_below} below, {n_above} above "
+                      f"({100*(n_below+n_above)/len(data2inorm):.1f}% total)")
+
+        # clip simulated values to observed range before inverse transform
+        if clip_nst:
+            data2inorm = np.clip(data2inorm, nst_min, nst_max)
+
+        # inverse transform
+        mgs_invtrans = nst_trans.inverse_transform(data2inorm).ravel()
+
+        # also clip in original space to prevent residual drift
+        if clip_nst:
+            mgs_invtrans = np.clip(mgs_invtrans, res_min, res_max)
+
+        if debug:
+            print(f"  After inverse transform (clipped): min={mgs_invtrans.min():.2f}, max={mgs_invtrans.max():.2f}, "
+                  f"mean={mgs_invtrans.mean():.2f}, std={mgs_invtrans.std():.2f}")
 
         # update trend on grid and obspts (trend = trend + simulated_residuals)
-        df['newtrend'] = df['newtrend'] + mgs_invtrans # NOTE THIS MAYBE WE COULD MAKE MORE ROBUST TO ENSURE THAT WE ARE ADDING THE RIGHT SIMULATED VALUE AT THE RIGHT LOCATION TO THE TREND THERE
+        df['newtrend'] = df['newtrend'] + mgs_invtrans
 
         # update residuals on obspts (residuals = data - trend)
         df['residual'] = df['value'] - df['newtrend']
 
         # update normalized residuals by normal score transforming the updated residuals
-        data2norm = df['residual'].values.reshape(-1,1)
+        data2norm = df['residual'].values.reshape(-1, 1)
         df['Nresidual'] = nst_trans.transform(data2norm)
 
-    # stitch back to full frame
-    df_all['newtrend']  = np.nan
-    df_all['residual']  = np.nan
-    df_all['Nresidual'] = np.nan   # (optional) keep the final NST residuals too
-    df_all.loc[sim_mask, 'newtrend']  = df['newtrend'].values
-    df_all.loc[sim_mask, 'residual']  = df['residual'].values
-    df_all.loc[sim_mask, 'Nresidual'] = df['Nresidual'].values
+        if debug:
+            print(f"  Updated residuals: min={df['residual'].min():.2f}, max={df['residual'].max():.2f}, "
+                  f"mean={df['residual'].mean():.2f}, std={df['residual'].std():.2f}")
+            print(f"  Updated Nresidual: min={df['Nresidual'].min():.3f}, max={df['Nresidual'].max():.3f}, "
+                  f"mean={df['Nresidual'].mean():.3f}, std={df['Nresidual'].std():.3f}")
+            print(f"  Newtrend: min={df['newtrend'].min():.2f}, max={df['newtrend'].max():.2f}, "
+                  f"mean={df['newtrend'].mean():.2f}")
+            print()
 
+    # stitch back to full frame
+    df_all['newtrend'] = np.nan
+    df_all['residual'] = np.nan
+    df_all['Nresidual'] = np.nan
+    df_all.loc[sim_mask, 'newtrend'] = df['newtrend'].values
+    df_all.loc[sim_mask, 'residual'] = df['residual'].values
+    df_all.loc[sim_mask, 'Nresidual'] = df['Nresidual'].values
 
     return df_all

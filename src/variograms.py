@@ -72,7 +72,7 @@ def cluster_variogram(df_fl, value_or_residual, idx_cluster, maxlag, n_lags, mod
 
 def build_variogram_dataframe(
     variograms: List[skg.Variogram],
-    azimuth: float = 0.0,
+    azimuths: Optional[List[float]] = None,
     minor_ranges: Optional[List[float]] = None,
     vtype: Optional[str] = None,
 ) -> pd.DataFrame:
@@ -83,8 +83,10 @@ def build_variogram_dataframe(
     ----------
     variograms : list of skg.Variogram
         List of fitted variogram objects (one per cluster)
-    azimuth : float
-        Azimuth angle in degrees for anisotropy direction (0 = East)
+    azimuths : float or list of float, optional
+        Azimuth angle(s) in degrees for anisotropy direction (0 = East).
+        Can be a single value (same for all clusters) or a list (one per cluster).
+        If None, defaults to 0 for all clusters.
     minor_ranges : list of float, optional
         Minor ranges for anisotropic variograms (one per cluster).
         If None, uses isotropic (minor_range = major_range).
@@ -103,6 +105,12 @@ def build_variogram_dataframe(
         # Capitalize first letter for gstatsim
         vtype = model_name.capitalize()
 
+    # Handle azimuths - can be single value or list
+    if azimuths is None:
+        azimuths = [0.0] * len(variograms)
+    elif isinstance(azimuths, (int, float)):
+        azimuths = [float(azimuths)] * len(variograms)
+
     gams = []
     for i, V in enumerate(variograms):
         # V.parameters = [range, sill, nugget] for spherical/exponential/gaussian
@@ -114,8 +122,11 @@ def build_variogram_dataframe(
         else:
             minor_range = major_range
 
+        # Get azimuth for this cluster
+        az = azimuths[i]
+
         # gstatsim format: [azimuth, nugget, major_range, minor_range, sill, variogram_type]
-        gam = [azimuth, nugget, major_range, minor_range, sill, vtype]
+        gam = [az, nugget, major_range, minor_range, sill, vtype]
         gams.append(gam)
 
     return pd.DataFrame({'Variogram': gams})
