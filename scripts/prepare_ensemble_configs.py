@@ -27,6 +27,7 @@ sys.path.insert(0, str(src_dir))
 from sklearn.preprocessing import QuantileTransformer
 from variograms import cluster_variogram, build_variogram_dataframe
 from skgstat import Variogram
+import trendmaking
 
 
 # =============================================================================
@@ -51,6 +52,10 @@ MG_RESOLS = [16, 8, 4, 2, 1]
 # MGSIM parameters
 NUM_POINTS = 10
 RADIUS = 400
+
+# Trend parameters (RBF interpolation)
+SMOOTHING = 100.0
+LINESPACING = 5
 
 # Variogram fitting parameters
 MAXLAG = 40
@@ -106,7 +111,7 @@ def load_data(fl_path=None):
 
 def compute_trend(df_fl, df_gt, use_subregions=True):
     """
-    Compute trend surface.
+    Compute smooth RBF trend surface using trendmaking.make_trend().
 
     Creates a DataFrame with ONE row per grid point. Observation values
     are mapped to their nearest grid nodes using KDTree.
@@ -118,28 +123,37 @@ def compute_trend(df_fl, df_gt, use_subregions=True):
     df_gt : DataFrame
         Ground truth grid with columns: x, y, val, clust
     use_subregions : bool
-        If True, use cluster-specific means for trend
-        If False, use global mean for trend
+        If True, retain cluster assignments for cluster_sgs
+        If False, set all clusters to 0 for okrige_sgs
 
     Returns
     -------
     df_xyvtcs : DataFrame
-        Grid DataFrame with columns: x, y, value, cluster, trend, set, residual
+        Grid DataFrame with columns: x, y, value, trend, cluster, set, residual
         - set=0 for grid points to simulate (value=NaN)
         - set=1 for observation points (value from flight lines)
     """
     from scipy.spatial import cKDTree
 
-    # Compute trend (cluster means or global mean)
-    if use_subregions:
-        cluster_means = df_fl.groupby('cluster')['value'].mean()
-    else:
-        global_mean = df_fl['value'].mean()
+    # Prepare arrays for make_trend()
+    # fl_xyvc: flight lines with x, y, value, cluster
+    fl_xyvc = df_fl[['x', 'y', 'value', 'cluster']].values
 
-    # Create full grid DataFrame (one row per grid point)
-    df_xyvtcs = df_gt[['x', 'y', 'val', 'clust']].copy()
-    df_xyvtcs.columns = ['x', 'y', 'value', 'cluster']
-    df_xyvtcs['cluster'] = df_xyvtcs['cluster'].astype(int)
+    # grid_xyc: grid with x, y, cluster
+    grid_xyc = df_gt[['x', 'y', 'clust']].values
+
+    # Compute smooth RBF trend using trendmaking module
+    print(f"  Computing RBF trend (smoothing={SMOOTHING}, linespacing={LINESPACING})...")
+    fl_xyvct, grid_xyct = trendmaking.make_trend(fl_xyvc, grid_xyc, SMOOTHING, LINESPACING)
+
+    # Create DataFrame from grid with trend
+    # grid_xyct has columns: x, y, cluster, trend
+    df_xyvtcs = pd.DataFrame({
+        'x': grid_xyct[:, 0],
+        'y': grid_xyct[:, 1],
+        'cluster': grid_xyct[:, 2].astype(int),
+        'trend': grid_xyct[:, 3],
+    })
 
     # Initialize: all values NaN, all set=0 (to simulate)
     df_xyvtcs['value'] = np.nan
@@ -148,12 +162,6 @@ def compute_trend(df_fl, df_gt, use_subregions=True):
     # For global case, set all clusters to 0
     if not use_subregions:
         df_xyvtcs['cluster'] = 0
-
-    # Compute trend based on cluster assignment
-    if use_subregions:
-        df_xyvtcs['trend'] = df_xyvtcs['cluster'].map(cluster_means)
-    else:
-        df_xyvtcs['trend'] = global_mean
 
     # Map observation values to nearest grid nodes using KDTree
     grid_xy = df_xyvtcs[['x', 'y']].values
