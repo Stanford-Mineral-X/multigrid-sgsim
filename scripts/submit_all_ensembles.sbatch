@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
 #SBATCH --array=0-49
-#SBATCH --output=logs/mgsim_ens_%A_%a.out
-#SBATCH --error=logs/mgsim_ens_%A_%a.err
+#SBATCH --output=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/mgsim_ens_%A_%a.out
+#SBATCH --error=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/mgsim_ens_%A_%a.err
 
 # ============================================================================
 # MGSIM 5-Ensemble Batch Processing
@@ -35,7 +35,7 @@
 # --- USER PARAMETERS ---
 REALIZATIONS_PER_ENSEMBLE=1000
 TASKS_PER_ENSEMBLE=10
-OUTPUT_DIR="results"
+OUTPUT_DIR="/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/results"
 
 # --- COMPUTED PARAMETERS ---
 REALIZATIONS_PER_TASK=$((REALIZATIONS_PER_ENSEMBLE / TASKS_PER_ENSEMBLE))
@@ -87,9 +87,11 @@ echo "=============================================="
 module load anaconda3
 source activate mgsim
 
+# Force unbuffered Python output (for live log viewing)
+export PYTHONUNBUFFERED=1
+
 # Create output directories
 mkdir -p $ENSEMBLE_OUTPUT_DIR
-mkdir -p logs
 
 # Change to script directory
 cd $SLURM_SUBMIT_DIR
