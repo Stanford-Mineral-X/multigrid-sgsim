@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name=mgsim_ens
 #SBATCH --partition=serc
-#SBATCH --time=04:00:00
+#SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
 #SBATCH --array=0-49
-#SBATCH --output=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/mgsim_ens_%A_%a.out
-#SBATCH --error=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/mgsim_ens_%A_%a.err
+#SBATCH --output=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/mgsim_ens_%A_%a.out
+#SBATCH --error=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/mgsim_ens_%A_%a.err
 
 # ============================================================================
 # MGSIM 5-Ensemble Batch Processing
