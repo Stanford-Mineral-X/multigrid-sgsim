@@ -84,8 +84,9 @@ echo "Output: $OUTPUT_FILE"
 echo "=============================================="
 
 # Load environment
-module load anaconda3
-source activate mgsim
+ml system
+ml python/3.12.1
+source /oak/stanford/groups/cyaolai/JoshRines/mineralx/venvs/venv_mgsim/bin/activate
 
 # Force unbuffered Python output (for live log viewing)
 export PYTHONUNBUFFERED=1

@@ -108,56 +108,92 @@ def compute_trend(df_fl, df_gt, use_subregions=True):
     """
     Compute trend surface.
 
+    Creates a DataFrame with ONE row per grid point. Observation values
+    are mapped to their nearest grid nodes using KDTree.
+
     Parameters
     ----------
     df_fl : DataFrame
-        Flight line observations
+        Flight line observations with columns: x, y, value, cluster
     df_gt : DataFrame
-        Ground truth grid
+        Ground truth grid with columns: x, y, val, clust
     use_subregions : bool
-        If True, use cluster-specific means
-        If False, use global mean
+        If True, use cluster-specific means for trend
+        If False, use global mean for trend
 
     Returns
     -------
     df_xyvtcs : DataFrame
-        Combined grid + observations with trend column
+        Grid DataFrame with columns: x, y, value, cluster, trend, set, residual
+        - set=0 for grid points to simulate (value=NaN)
+        - set=1 for observation points (value from flight lines)
     """
+    from scipy.spatial import cKDTree
+
+    # Compute trend (cluster means or global mean)
     if use_subregions:
-        # Cluster-specific means
         cluster_means = df_fl.groupby('cluster')['value'].mean()
     else:
-        # Global mean
         global_mean = df_fl['value'].mean()
-        cluster_means = pd.Series({c: global_mean for c in df_fl['cluster'].unique()})
 
-    # Create full grid DataFrame
-    df_grid = df_gt[['x', 'y', 'val', 'clust']].copy()
-    df_grid.columns = ['x', 'y', 'value', 'cluster']
-    df_grid['cluster'] = df_grid['cluster'].astype(int)
+    # Create full grid DataFrame (one row per grid point)
+    df_xyvtcs = df_gt[['x', 'y', 'val', 'clust']].copy()
+    df_xyvtcs.columns = ['x', 'y', 'value', 'cluster']
+    df_xyvtcs['cluster'] = df_xyvtcs['cluster'].astype(int)
 
-    if use_subregions:
-        df_grid['trend'] = df_grid['cluster'].map(cluster_means)
-    else:
-        df_grid['trend'] = global_mean
-    df_grid['set'] = 0  # grid points
-
-    # Add observation points
-    df_obs = df_fl.copy()
-    if use_subregions:
-        df_obs['trend'] = df_obs['cluster'].map(cluster_means)
-    else:
-        df_obs['trend'] = global_mean
-    df_obs['set'] = 1  # observation points
+    # Initialize: all values NaN, all set=0 (to simulate)
+    df_xyvtcs['value'] = np.nan
+    df_xyvtcs['set'] = 0
 
     # For global case, set all clusters to 0
     if not use_subregions:
-        df_grid['cluster'] = 0
-        df_obs['cluster'] = 0
+        df_xyvtcs['cluster'] = 0
 
-    # Combine
-    df_xyvtcs = pd.concat([df_grid, df_obs], ignore_index=True)
+    # Compute trend based on cluster assignment
+    if use_subregions:
+        df_xyvtcs['trend'] = df_xyvtcs['cluster'].map(cluster_means)
+    else:
+        df_xyvtcs['trend'] = global_mean
+
+    # Map observation values to nearest grid nodes using KDTree
+    grid_xy = df_xyvtcs[['x', 'y']].values
+    obs_xy = df_fl[['x', 'y']].values
+    obs_values = df_fl['value'].values
+
+    tree = cKDTree(grid_xy)
+
+    # Find nearest grid node for each observation
+    # Use tolerance based on grid spacing
+    x_unique = np.sort(df_xyvtcs['x'].unique())
+    y_unique = np.sort(df_xyvtcs['y'].unique())
+    dx = np.abs(np.diff(x_unique)).min() if len(x_unique) > 1 else 1
+    dy = np.abs(np.diff(y_unique)).min() if len(y_unique) > 1 else 1
+    tol = np.sqrt(dx**2 + dy**2) * 0.5  # Half diagonal of grid cell
+
+    dist, grid_idx = tree.query(obs_xy, distance_upper_bound=tol)
+
+    # Filter valid matches (within tolerance)
+    valid_mask = np.isfinite(dist)
+    valid_grid_idx = grid_idx[valid_mask]
+    valid_obs_values = obs_values[valid_mask]
+
+    # Handle duplicates: if multiple observations map to same grid node, average them
+    obs_df = pd.DataFrame({
+        'grid_idx': valid_grid_idx,
+        'value': valid_obs_values
+    })
+    agg = obs_df.groupby('grid_idx').agg({'value': 'mean'}).reset_index()
+
+    # Set values and set=1 at observation locations
+    df_xyvtcs.loc[agg['grid_idx'].values, 'value'] = agg['value'].values
+    df_xyvtcs.loc[agg['grid_idx'].values, 'set'] = 1
+
+    # Compute residuals (value - trend)
     df_xyvtcs['residual'] = df_xyvtcs['value'] - df_xyvtcs['trend']
+
+    print(f"  Grid points: {len(df_xyvtcs)}")
+    print(f"  Observations mapped: {len(agg)} (from {len(df_fl)} flight line points)")
+    print(f"  Points to simulate: {(df_xyvtcs['set'] == 0).sum()}")
 
     return df_xyvtcs
 
