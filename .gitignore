@@ -39,3 +39,6 @@ Thumbs.db
 # Example data outputs, scratch, logs, etc.
 *.log
 *.tmp
+
+# --- Claude Code context file ---
+CLAUDE.md
