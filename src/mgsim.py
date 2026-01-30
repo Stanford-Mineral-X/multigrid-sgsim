@@ -9,7 +9,8 @@ from sampling import subsample_dataframe
 def mgsim(
     mg_resols,
     df_xyvtcs,
-    df_gamma,
+    df_gamma=None,
+    vario=None,
     xx: str = 'x',
     yy: str = 'y',
     zz: str = 'residual',
@@ -34,8 +35,12 @@ def mgsim(
         - 'trend' (initial trend at each point in the grid)
         - 'set' (flag: 1 for observation point location, 0 for non-observation point location)
         - 'cluster' (integer cluster ID or each data point; -1 for locations not to be simulated)
-    df_gamma : pd.DataFrame
-        Variogram model parameters for the simulation (region-specific variograms; see gstatsim documentation for more details)
+    df_gamma : pd.DataFrame, optional
+        Variogram model parameters for cluster-specific simulation (subregions mode).
+        One row per cluster. Use this for cluster_sgs. Mutually exclusive with vario.
+    vario : list, optional
+        Single variogram parameters [azimuth, nugget, major_range, minor_range, sill, vtype]
+        for global simulation (no clusters). Use this for okrige_sgs. Mutually exclusive with df_gamma.
     xx, yy, zz, kk : str
         Column names in df_xyvtcs for x, y, residual, and cluster ID respectively
         Defaults: 'x', 'y', 'residual', 'cluster'
@@ -49,8 +54,21 @@ def mgsim(
     df_all : pd.DataFrame
         DataFrame with updated 'newtrend' column after multigrid SGSIM; retains all original rows and indices.
         'newtrend' is NaN for rows where 'cluster' < 0 (not simulated).
+
+    Notes:
+    ------
+    Must provide exactly one of df_gamma or vario:
+    - df_gamma: Uses cluster_sgs (cluster-specific variograms)
+    - vario: Uses okrige_sgs (single global variogram)
     """
-    
+    # Validate inputs: must provide exactly one of df_gamma or vario
+    if df_gamma is None and vario is None:
+        raise ValueError("Must provide either df_gamma (for subregions) or vario (for global)")
+    if df_gamma is not None and vario is not None:
+        raise ValueError("Provide only one of df_gamma or vario, not both")
+
+    use_global = vario is not None
+
     # keep a copy of ALL rows
     df_all = df_xyvtcs.copy()
 
@@ -83,14 +101,21 @@ def mgsim(
             # print(f" last iteration, using all {len(df_mgsmpl)} observation points (no subsampling), search radius = {1*mg_resol} ")
 
         # sequential gaussian simulation of residuals subset
-        # radius = 1*mg_resol  # set search radius to twice the grid spacing
-        # radius = radii[i]
-        if sgs_or_krige=='sgs':
-            mgsgs = gs.Interpolation.cluster_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, kk, num_points, df_gamma, radius)
-        elif sgs_or_krige=='krige':
-            # df_gamma = [azimuth, nugget, major_range, minor_range, sill, variogram_type]
-            vario = [df_gamma['Variogram'][0][0], df_gamma['Variogram'][0][1], df_gamma['Variogram'][0][2], df_gamma['Variogram'][0][3], df_gamma['Variogram'][0][4], df_gamma['Variogram'][0][5]]
-            mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius) 
+        if sgs_or_krige == 'sgs':
+            if use_global:
+                # Single variogram for entire field (no clusters) - use okrige_sgs
+                mgsgs = gs.Interpolation.okrige_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius)
+            else:
+                # Cluster-specific variograms - use cluster_sgs
+                mgsgs = gs.Interpolation.cluster_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, kk, num_points, df_gamma, radius)
+        elif sgs_or_krige == 'krige':
+            # Ordinary kriging (no stochastic component)
+            if use_global:
+                mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius)
+            else:
+                # For kriging with clusters, extract first variogram
+                vario_k = df_gamma['Variogram'][0]
+                mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario_k, radius) 
 
         # update trend on grid and obspts (trend = trend + simulated_residuals)
         df['newtrend'] = df['newtrend'] + mgsgs # NOTE THIS MAYBE WE COULD MAKE MORE ROBUST TO ENSURE THAT WE ARE ADDING THE RIGHT SIMULATED VALUE AT THE RIGHT LOCATION TO THE TREND THERE
@@ -115,7 +140,8 @@ def mgsim(
 def mgsim_nst(
     mg_resols,
     df_xyvtcs,
-    df_gamma,
+    df_gamma=None,
+    vario=None,
     xx: str = 'x',
     yy: str = 'y',
     zz: str = 'Nresidual',
@@ -142,8 +168,12 @@ def mgsim_nst(
         - 'trend' (initial trend at each point in the grid)
         - 'set' (flag: 1 for observation point location, 0 for non-observation point location)
         - 'cluster' (integer cluster ID or each data point; -1 for locations not to be simulated)
-    df_gamma : pd.DataFrame
-        Variogram model parameters for the simulation (region-specific variograms; see gstatsim documentation for more details)
+    df_gamma : pd.DataFrame, optional
+        Variogram model parameters for cluster-specific simulation (subregions mode).
+        One row per cluster. Use this for cluster_sgs. Mutually exclusive with vario.
+    vario : list, optional
+        Single variogram parameters [azimuth, nugget, major_range, minor_range, sill, vtype]
+        for global simulation (no clusters). Use this for okrige_sgs. Mutually exclusive with df_gamma.
     xx, yy, zz, kk : str
         Column names in df_xyvtcs for x, y, residual, and cluster ID respectively
         Defaults: 'x', 'y', 'Nresidual', 'cluster'
@@ -167,6 +197,13 @@ def mgsim_nst(
         DataFrame with updated 'newtrend' column after multigrid SGSIM; retains all original rows and indices.
         'newtrend' is NaN for rows where 'cluster' < 0 (not simulated).
     """
+    # Validate inputs: must provide exactly one of df_gamma or vario
+    if df_gamma is None and vario is None:
+        raise ValueError("Must provide either df_gamma (for subregions) or vario (for global)")
+    if df_gamma is not None and vario is not None:
+        raise ValueError("Provide only one of df_gamma or vario, not both")
+
+    use_global = vario is not None
 
     # keep a copy of ALL rows
     df_all = df_xyvtcs.copy()
@@ -237,12 +274,19 @@ def mgsim_nst(
 
         # sequential gaussian simulation of residuals subset
         if sgs_or_krige == 'sgs':
-            mgsgs = gs.Interpolation.cluster_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, kk, num_points, df_gamma, radius)
+            if use_global:
+                # Single variogram for entire field (no clusters) - use okrige_sgs
+                mgsgs = gs.Interpolation.okrige_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius)
+            else:
+                # Cluster-specific variograms - use cluster_sgs
+                mgsgs = gs.Interpolation.cluster_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, kk, num_points, df_gamma, radius)
         elif sgs_or_krige == 'krige':
-            vario = [df_gamma['Variogram'][0][0], df_gamma['Variogram'][0][1],
-                     df_gamma['Variogram'][0][2], df_gamma['Variogram'][0][3],
-                     df_gamma['Variogram'][0][4], df_gamma['Variogram'][0][5]]
-            mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius)
+            # Ordinary kriging (no stochastic component)
+            if use_global:
+                mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius)
+            else:
+                vario_k = df_gamma['Variogram'][0]
+                mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario_k, radius)
 
         # convert to array for processing
         data2inorm = np.asarray(mgsgs).reshape(-1, 1)
