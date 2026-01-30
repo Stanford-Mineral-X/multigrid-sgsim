@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=mgsim_ens
-#SBATCH --partition=normal
+#SBATCH --partition=serc
 #SBATCH --time=04:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
