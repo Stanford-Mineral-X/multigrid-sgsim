@@ -13,7 +13,7 @@ Usage:
     python prepare_ensemble_configs.py
 """
 
-import pickle
+import json
 import numpy as np
 import pandas as pd
 import sys
@@ -24,7 +24,7 @@ script_dir = Path(__file__).parent
 src_dir = script_dir.parent / 'src'
 sys.path.insert(0, str(src_dir))
 
-from sklearn.preprocessing import QuantileTransformer
+# QuantileTransformer imported only if USE_NST is True (not currently used)
 from variograms import cluster_variogram, build_variogram_dataframe
 from skgstat import Variogram
 import trendmaking
@@ -71,8 +71,8 @@ USE_NST = False
 CLIP_NST = True
 CLIP_PERCENTILE = 98.0
 
-# Output directory
-OUTPUT_DIR = script_dir
+# Output directory for config files
+OUTPUT_DIR = script_dir.parent / 'configs'
 
 
 # =============================================================================
@@ -199,9 +199,9 @@ def compute_trend(df_fl, df_gt, use_subregions=True):
     # Compute residuals (value - trend)
     df_xyvtcs['residual'] = df_xyvtcs['value'] - df_xyvtcs['trend']
 
-    print(f"  Grid points: {len(df_xyvtcs)}")
-    print(f"  Observations mapped: {len(agg)} (from {len(df_fl)} flight line points)")
-    print(f"  Points to simulate: {(df_xyvtcs['set'] == 0).sum()}")
+    print(f"  Grid points: {len(df_xyvtcs)} (all will be simulated)")
+    print(f"  Observations mapped: {len(agg)} (set=1, used for residual conditioning)")
+    print(f"  Non-observation points: {(df_xyvtcs['set'] == 0).sum()} (set=0)")
 
     return df_xyvtcs
 
@@ -335,9 +335,13 @@ def fit_anisotropic_variograms(df_fl, use_subregions=True):
         return None, vario
 
 
-def create_config(df_xyvtcs, x_coords, y_coords, ensemble_name, use_subregions,
-                  df_gamma=None, vario=None):
-    """Create configuration dictionary.
+def save_config(df_xyvtcs, x_coords, y_coords, ensemble_name, use_subregions,
+                df_gamma=None, vario=None, output_dir=None):
+    """Save configuration to portable files (CSV + JSON).
+
+    Creates:
+    - config_{ensemble_name}_data.csv: The DataFrame
+    - config_{ensemble_name}.json: All other parameters
 
     Parameters
     ----------
@@ -353,7 +357,15 @@ def create_config(df_xyvtcs, x_coords, y_coords, ensemble_name, use_subregions,
         Variogram parameters for subregions mode (cluster_sgs)
     vario : list, optional
         Single variogram [azimuth, nugget, major_range, minor_range, sill, vtype] for global mode (okrige_sgs)
+    output_dir : Path, optional
+        Output directory
     """
+    if output_dir is None:
+        output_dir = OUTPUT_DIR
+
+    # Create output directory if it doesn't exist
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     mgsim_kwargs = {
         'xx': 'x',
         'yy': 'y',
@@ -368,23 +380,27 @@ def create_config(df_xyvtcs, x_coords, y_coords, ensemble_name, use_subregions,
         mgsim_kwargs['clip_nst'] = CLIP_NST
         mgsim_kwargs['clip_percentile'] = CLIP_PERCENTILE
 
-    # Fit NST transformer if needed
-    nst_trans = None
-    if USE_NST:
-        obs_residuals = df_xyvtcs.loc[df_xyvtcs['set'] == 1, 'residual'].values.reshape(-1, 1)
-        nst_trans = QuantileTransformer(output_distribution='normal', n_quantiles=min(1000, len(obs_residuals)))
-        nst_trans.fit(obs_residuals)
+    # Convert df_gamma to list of variogram lists (portable format)
+    # df_gamma has a 'Variogram' column where each entry is [azimuth, nugget, major, minor, sill, vtype]
+    variograms_list = None
+    if df_gamma is not None:
+        variograms_list = df_gamma['Variogram'].tolist()
 
+    # Save DataFrame as CSV (portable across pandas versions)
+    csv_path = output_dir / f"config_{ensemble_name}_data.csv"
+    df_xyvtcs.to_csv(csv_path, index=False)
+    print(f"  Saved DataFrame to {csv_path}")
+
+    # Build config dict with JSON-serializable types
     config = {
-        'df_xyvtcs': df_xyvtcs,
-        'df_gamma': df_gamma,  # For subregions (cluster_sgs)
-        'vario': vario,        # For global (okrige_sgs)
+        'data_file': f"config_{ensemble_name}_data.csv",  # Relative path
+        'variograms_list': variograms_list,  # List of [az, nug, maj, min, sill, vtype] per cluster
+        'vario': vario,                      # Single variogram for global mode
         'mg_resols': MG_RESOLS,
-        'grid_shape': (ROWS, COLS),
-        'x_coords': x_coords,
-        'y_coords': y_coords,
+        'grid_shape': [ROWS, COLS],
+        'x_coords': x_coords.tolist(),
+        'y_coords': y_coords.tolist(),
         'use_nst': USE_NST,
-        'nst_trans': nst_trans,
         'mgsim_kwargs': mgsim_kwargs,
         'metadata': {
             'ensemble_name': ensemble_name,
@@ -394,6 +410,12 @@ def create_config(df_xyvtcs, x_coords, y_coords, ensemble_name, use_subregions,
             'n_lags': N_LAGS,
         }
     }
+
+    # Save config as JSON
+    json_path = output_dir / f"config_{ensemble_name}.json"
+    with open(json_path, 'w') as f:
+        json.dump(config, f, indent=2)
+    print(f"  Saved config to {json_path}")
 
     return config
 
@@ -447,8 +469,9 @@ def main():
         else:
             print(f"\nGlobal vario: {vario}")
 
-        # Create config
-        config = create_config(
+        # Save config (CSV + JSON format for portability)
+        print("\nSaving config...")
+        save_config(
             df_xyvtcs, x_coords, y_coords,
             ensemble_name=ens['name'],
             use_subregions=ens['use_subregions'],
@@ -456,34 +479,32 @@ def main():
             vario=vario
         )
 
-        # Save config
-        output_path = OUTPUT_DIR / f"config_{ens['name']}.pkl"
-        print(f"\nSaving config to {output_path}")
-        with open(output_path, 'wb') as f:
-            pickle.dump(config, f)
-
     # Print summary
     print("\n" + "=" * 70)
     print("SUMMARY - 5 ENSEMBLE CONFIGS CREATED")
     print("=" * 70)
     print("""
-    1. config_iso_subregions_dense.pkl
+    Each ensemble generates two files:
+    - config_{name}.json: Configuration parameters (variograms, grid info)
+    - config_{name}_data.csv: DataFrame with grid points and observations
+
+    1. config_iso_subregions_dense.json
        - Isotropic variograms, cluster-specific
        - Dense flight lines (spacing=3)
 
-    2. config_iso_global_dense.pkl
+    2. config_iso_global_dense.json
        - Isotropic variograms, single global (okrige_sgs)
        - Dense flight lines
 
-    3. config_aniso_subregions_dense.pkl
+    3. config_aniso_subregions_dense.json
        - Anisotropic variograms, cluster-specific
        - Dense flight lines
 
-    4. config_aniso_global_dense.pkl
+    4. config_aniso_global_dense.json
        - Anisotropic variograms, single global (okrige_sgs)
        - Dense flight lines
 
-    5. config_iso_subregions_sparse.pkl
+    5. config_iso_subregions_sparse.json
        - Isotropic variograms, cluster-specific
        - Sparse flight lines (spacing=6)
        - Compare with #1 to assess flight line density effect

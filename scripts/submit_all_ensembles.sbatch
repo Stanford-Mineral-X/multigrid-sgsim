@@ -53,7 +53,9 @@ case $ENSEMBLE_IDX in
     4) ENSEMBLE_NAME="iso_subregions_sparse" ;;
 esac
 
-CONFIG_FILE="config_${ENSEMBLE_NAME}.pkl"
+# Config files are in ../configs/ relative to scripts/
+CONFIG_DIR="${SLURM_SUBMIT_DIR}/../configs"
+CONFIG_FILE="${CONFIG_DIR}/config_${ENSEMBLE_NAME}.json"
 
 # Calculate realization range for this task
 START_IDX=$((TASK_WITHIN_ENSEMBLE * REALIZATIONS_PER_TASK))

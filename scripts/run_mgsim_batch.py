@@ -3,15 +3,16 @@
 Batch MGSIM Realization Generator for HPC
 
 Usage:
-    python run_mgsim_batch.py --config config.pkl --start 0 --end 100 --output results_0_100.nc
+    python run_mgsim_batch.py --config config.json --start 0 --end 100 --output results_0_100.nc
 
 This script runs multiple MGSIM realizations and saves them to a NetCDF file.
 Designed for use with SLURM array jobs on HPC systems like Sherlock.
 """
 
 import argparse
-import pickle
+import json
 import numpy as np
+import pandas as pd
 import xarray as xr
 import sys
 import os
@@ -24,6 +25,61 @@ src_dir = script_dir.parent / 'src'
 sys.path.insert(0, str(src_dir))
 
 from mgsim import mgsim, mgsim_nst
+
+
+def load_config(config_path: str) -> dict:
+    """
+    Load configuration from JSON + CSV files.
+
+    Parameters
+    ----------
+    config_path : str
+        Path to the JSON config file (e.g., config_iso_subregions_dense.json)
+
+    Returns
+    -------
+    dict
+        Configuration dictionary with:
+        - df_xyvtcs: pandas DataFrame loaded from CSV
+        - df_gamma: reconstructed variogram DataFrame (if subregions mode)
+        - vario: single variogram list (if global mode)
+        - other config parameters
+    """
+    config_path = Path(config_path)
+
+    # Load JSON config
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    # Load DataFrame from CSV
+    data_file = config_path.parent / config['data_file']
+    print(f"  Loading data from {data_file}")
+    df_xyvtcs = pd.read_csv(data_file)
+
+    # Reconstruct df_gamma from variograms_list if present
+    df_gamma = None
+    if config.get('variograms_list') is not None:
+        df_gamma = pd.DataFrame({'Variogram': config['variograms_list']})
+
+    # Convert lists back to numpy arrays
+    x_coords = np.array(config['x_coords'])
+    y_coords = np.array(config['y_coords'])
+    grid_shape = tuple(config['grid_shape'])
+
+    # Build the config dict expected by run_realizations
+    return {
+        'df_xyvtcs': df_xyvtcs,
+        'df_gamma': df_gamma,
+        'vario': config.get('vario'),
+        'mg_resols': config['mg_resols'],
+        'grid_shape': grid_shape,
+        'x_coords': x_coords,
+        'y_coords': y_coords,
+        'use_nst': config.get('use_nst', False),
+        'nst_trans': None,  # NST not supported in portable format
+        'mgsim_kwargs': config.get('mgsim_kwargs', {}),
+        'metadata': config.get('metadata', {}),
+    }
 
 
 def run_realizations(config: dict, start_idx: int, end_idx: int, seed_offset: int = 0) -> xr.Dataset:
@@ -173,7 +229,7 @@ def run_realizations(config: dict, start_idx: int, end_idx: int, seed_offset: in
 def main():
     parser = argparse.ArgumentParser(description='Run batch MGSIM realizations')
     parser.add_argument('--config', type=str, required=True,
-                        help='Path to pickled configuration file')
+                        help='Path to JSON configuration file')
     parser.add_argument('--start', type=int, required=True,
                         help='Starting realization index (inclusive)')
     parser.add_argument('--end', type=int, required=True,
@@ -185,10 +241,9 @@ def main():
 
     args = parser.parse_args()
 
-    # Load configuration
+    # Load configuration from JSON + CSV
     print(f"Loading configuration from {args.config}")
-    with open(args.config, 'rb') as f:
-        config = pickle.load(f)
+    config = load_config(args.config)
 
     # Run realizations
     ds = run_realizations(
