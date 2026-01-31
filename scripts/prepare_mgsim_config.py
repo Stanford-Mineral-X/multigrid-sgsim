@@ -42,8 +42,8 @@ def prepare_synthetic_data_config():
     fl_path = data_dir / 'fl_xyvc.csv'
 
     # Grid parameters (should match your ground truth grid)
-    rows = 100
-    cols = 100
+    rows = 50
+    cols = 200
 
     # Multigrid resolutions (coarse to fine)
     mg_resols = [16, 8, 4, 2, 1]
