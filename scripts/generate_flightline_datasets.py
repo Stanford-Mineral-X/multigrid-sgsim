@@ -3,8 +3,8 @@
 Generate Synthetic Flight Line Datasets for Ensemble Experiments
 
 This script generates nested flight line datasets from ground truth data:
-- Dense: flight lines every 3 grid cells
-- Sparse: flight lines every 6 grid cells (subset of dense)
+- Dense: flight lines every 4 grid cells (gap of 3)
+- Sparse: flight lines every 8 grid cells (gap of 7, subset of dense)
 
 The sparse dataset is guaranteed to be a subset of the dense dataset,
 ensuring a fair comparison of flight line spacing effects.
@@ -13,8 +13,8 @@ Usage:
     python generate_flightline_datasets.py
 
 Output:
-    data/fl_dense.csv   - Dense flight lines (spacing=3)
-    data/fl_sparse.csv  - Sparse flight lines (spacing=6)
+    data/fl_dense.csv   - Dense flight lines (spacing=4, gap=3)
+    data/fl_sparse.csv  - Sparse flight lines (spacing=8, gap=7)
 """
 
 import sys
@@ -41,8 +41,8 @@ GT_PATH = Path('/Users/jrines/stanford_gp/research/mx/computers_geosciences/data
 OUTPUT_DIR = Path('/Users/jrines/stanford_gp/research/mx/computers_geosciences/multigrid-sgsim/demos/data')
 
 # Flight line parameters
-DENSE_SPACING = 3   # Grid cells between dense flight lines
-SPARSE_SPACING = 6  # Grid cells between sparse flight lines (must be multiple of dense)
+DENSE_SPACING = 4   # Grid cells between dense flight lines (gap of 3)
+SPARSE_SPACING = 8  # Grid cells between sparse flight lines (gap of 7, must be multiple of dense)
 ANGLE = -45.0         # Flight line angle: 0 = E-W, 90 = N-S
 
 # Column names in ground truth file

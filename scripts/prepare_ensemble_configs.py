@@ -43,8 +43,8 @@ FL_DENSE_PATH = Path('/Users/jrines/stanford_gp/research/mx/computers_geoscience
 FL_SPARSE_PATH = Path('/Users/jrines/stanford_gp/research/mx/computers_geosciences/multigrid-sgsim/demos/data/fl_xyvc_sparse.csv')
 
 # Grid parameters
-ROWS = 100
-COLS = 100
+ROWS = 50
+COLS = 200
 
 # Multigrid resolutions (coarse to fine)
 MG_RESOLS = [16, 8, 4, 2, 1]
@@ -490,7 +490,7 @@ def main():
 
     1. config_iso_subregions_dense.json
        - Isotropic variograms, cluster-specific
-       - Dense flight lines (spacing=3)
+       - Dense flight lines (spacing=4, gap=3)
 
     2. config_iso_global_dense.json
        - Isotropic variograms, single global (okrige_sgs)
@@ -506,7 +506,7 @@ def main():
 
     5. config_iso_subregions_sparse.json
        - Isotropic variograms, cluster-specific
-       - Sparse flight lines (spacing=6)
+       - Sparse flight lines (spacing=8, gap=7)
        - Compare with #1 to assess flight line density effect
     """)
 

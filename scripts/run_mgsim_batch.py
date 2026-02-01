@@ -219,7 +219,7 @@ def run_realizations(config: dict, start_idx: int, end_idx: int, seed_offset: in
             'end_realization': end_idx,
             'n_realizations': n_realizations,
             'mg_resols': str(mg_resols),
-            'use_nst': use_nst,
+            'use_nst': int(use_nst),  # Convert bool to int for netCDF4 compatibility
         }
     )
 
