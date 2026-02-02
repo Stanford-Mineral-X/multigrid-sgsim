@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 """
-Prepare MGSIM Configurations for 5 Ensemble Comparison
+Prepare MGSIM Configurations for 6 Ensemble Comparison
 
-Creates 5 configuration files for comparing:
-1. Isotropic + Subregions + Dense flight lines
+Creates 6 configuration files for comparing:
+1. Isotropic + Subregions + Dense flight lines (spacing=4, gap=3)
 2. Isotropic + Global + Dense flight lines
 3. Anisotropic + Subregions + Dense flight lines
 4. Anisotropic + Global + Dense flight lines
-5. Isotropic + Subregions + Sparse flight lines (compare with #1)
+5. Isotropic + Subregions + Medium flight lines (spacing=6, gap=5)
+6. Isotropic + Subregions + Sparse flight lines (spacing=8, gap=7)
 
 Usage:
     python prepare_ensemble_configs.py
@@ -38,8 +39,9 @@ import trendmaking
 DATA_DIR = Path('/Users/jrines/stanford_gp/research/mx/computers_geosciences/data')
 GT_PATH = DATA_DIR / 'gt_xyvc.csv'
 
-# Flight line paths (dense and sparse for comparison)
+# Flight line paths (dense, medium, sparse for comparison)
 FL_DENSE_PATH = Path('/Users/jrines/stanford_gp/research/mx/computers_geosciences/multigrid-sgsim/demos/data/fl_xyvc_dense.csv')
+FL_MEDIUM_PATH = Path('/Users/jrines/stanford_gp/research/mx/computers_geosciences/multigrid-sgsim/demos/data/fl_xyvc_medium.csv')
 FL_SPARSE_PATH = Path('/Users/jrines/stanford_gp/research/mx/computers_geosciences/multigrid-sgsim/demos/data/fl_xyvc_sparse.csv')
 
 # Grid parameters
@@ -429,14 +431,15 @@ def main():
     print("MGSIM ENSEMBLE CONFIGURATION GENERATOR")
     print("=" * 70)
 
-    # Define 5 ensembles:
+    # Define 6 ensembles:
     # 4 combinations of iso/aniso × subregions/global (dense flight lines)
-    # + 1 with sparse flight lines for comparison
+    # + 2 with medium/sparse flight lines for density comparison
     ensembles = [
         {'name': 'iso_subregions_dense', 'use_subregions': True, 'anisotropic': False, 'fl_path': FL_DENSE_PATH},
         {'name': 'iso_global_dense', 'use_subregions': False, 'anisotropic': False, 'fl_path': FL_DENSE_PATH},
         {'name': 'aniso_subregions_dense', 'use_subregions': True, 'anisotropic': True, 'fl_path': FL_DENSE_PATH},
         {'name': 'aniso_global_dense', 'use_subregions': False, 'anisotropic': True, 'fl_path': FL_DENSE_PATH},
+        {'name': 'iso_subregions_medium', 'use_subregions': True, 'anisotropic': False, 'fl_path': FL_MEDIUM_PATH},
         {'name': 'iso_subregions_sparse', 'use_subregions': True, 'anisotropic': False, 'fl_path': FL_SPARSE_PATH},
     ]
 
@@ -481,7 +484,7 @@ def main():
 
     # Print summary
     print("\n" + "=" * 70)
-    print("SUMMARY - 5 ENSEMBLE CONFIGS CREATED")
+    print("SUMMARY - 6 ENSEMBLE CONFIGS CREATED")
     print("=" * 70)
     print("""
     Each ensemble generates two files:
@@ -504,7 +507,12 @@ def main():
        - Anisotropic variograms, single global (okrige_sgs)
        - Dense flight lines
 
-    5. config_iso_subregions_sparse.json
+    5. config_iso_subregions_medium.json
+       - Isotropic variograms, cluster-specific
+       - Medium flight lines (spacing=6, gap=5)
+       - Compare with #1 and #6 to assess flight line density effect
+
+    6. config_iso_subregions_sparse.json
        - Isotropic variograms, cluster-specific
        - Sparse flight lines (spacing=8, gap=7)
        - Compare with #1 to assess flight line density effect

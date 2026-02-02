@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Combine and Compare All 4 Ensembles
+Combine and Compare All 6 Ensembles
 
 This script:
 1. Combines partial NetCDF files for each ensemble
@@ -28,6 +28,7 @@ ENSEMBLE_NAMES = [
     'iso_global_dense',
     'aniso_subregions_dense',
     'aniso_global_dense',
+    'iso_subregions_medium',
     'iso_subregions_sparse',
 ]
 
@@ -36,6 +37,7 @@ ENSEMBLE_LABELS = {
     'iso_global_dense': 'Iso + Global (Dense)',
     'aniso_subregions_dense': 'Aniso + Subregions (Dense)',
     'aniso_global_dense': 'Aniso + Global (Dense)',
+    'iso_subregions_medium': 'Iso + Subregions (Medium)',
     'iso_subregions_sparse': 'Iso + Subregions (Sparse)',
 }
 
@@ -177,7 +179,7 @@ def generate_comparison_figures(results: dict, ground_truth: np.ndarray, output_
                 labels.append(ENSEMBLE_LABELS[name].replace(' + ', '\n'))
 
         bp = ax.boxplot(data, labels=labels, patch_artist=True)
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']  # 5 colors
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']  # 6 colors
         for patch, color in zip(bp['boxes'], colors[:len(data)]):
             patch.set_facecolor(color)
             patch.set_alpha(0.7)
@@ -195,8 +197,8 @@ def generate_comparison_figures(results: dict, ground_truth: np.ndarray, output_
     fig, ax = plt.subplots(figsize=(12, 6))
 
     x = np.arange(len(metrics))
-    width = 0.15  # Narrower for 5 ensembles
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']  # 5 colors
+    width = 0.12  # Narrower for 6 ensembles
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']  # 6 colors
 
     for i, name in enumerate(ENSEMBLE_NAMES):
         if name not in results:
@@ -207,7 +209,7 @@ def generate_comparison_figures(results: dict, ground_truth: np.ndarray, output_
 
     ax.set_ylabel('Metric Value')
     ax.set_title('Mean Field Metrics Comparison')
-    ax.set_xticks(x + width * 2)  # Center for 5 bars
+    ax.set_xticks(x + width * 2.5)  # Center for 6 bars
     ax.set_xticklabels([m.upper() for m in metrics])
     ax.legend()
     ax.grid(axis='y', alpha=0.3)

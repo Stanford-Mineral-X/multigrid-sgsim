@@ -4,17 +4,19 @@ Generate Synthetic Flight Line Datasets for Ensemble Experiments
 
 This script generates nested flight line datasets from ground truth data:
 - Dense: flight lines every 4 grid cells (gap of 3)
+- Medium: flight lines every 6 grid cells (gap of 5)
 - Sparse: flight lines every 8 grid cells (gap of 7, subset of dense)
 
-The sparse dataset is guaranteed to be a subset of the dense dataset,
-ensuring a fair comparison of flight line spacing effects.
+The sparse dataset is guaranteed to be a subset of the dense dataset.
+Medium is independent (6 is not a multiple of 4).
 
 Usage:
     python generate_flightline_datasets.py
 
 Output:
-    data/fl_dense.csv   - Dense flight lines (spacing=4, gap=3)
-    data/fl_sparse.csv  - Sparse flight lines (spacing=8, gap=7)
+    data/fl_xyvc_dense.csv   - Dense flight lines (spacing=4, gap=3)
+    data/fl_xyvc_medium.csv  - Medium flight lines (spacing=6, gap=5)
+    data/fl_xyvc_sparse.csv  - Sparse flight lines (spacing=8, gap=7)
 """
 
 import sys
@@ -27,7 +29,7 @@ sys.path.insert(0, str(src_dir))
 
 import numpy as np
 import pandas as pd
-from synthetic import extract_nested_flightlines
+from synthetic import extract_nested_flightlines, extract_flightlines
 
 
 # =============================================================================
@@ -41,9 +43,10 @@ GT_PATH = Path('/Users/jrines/stanford_gp/research/mx/computers_geosciences/data
 OUTPUT_DIR = Path('/Users/jrines/stanford_gp/research/mx/computers_geosciences/multigrid-sgsim/demos/data')
 
 # Flight line parameters
-DENSE_SPACING = 4   # Grid cells between dense flight lines (gap of 3)
-SPARSE_SPACING = 8  # Grid cells between sparse flight lines (gap of 7, must be multiple of dense)
-ANGLE = -45.0         # Flight line angle: 0 = E-W, 90 = N-S
+DENSE_SPACING = 4    # Grid cells between dense flight lines (gap of 3)
+MEDIUM_SPACING = 6   # Grid cells between medium flight lines (gap of 5)
+SPARSE_SPACING = 8   # Grid cells between sparse flight lines (gap of 7, must be multiple of dense)
+ANGLE = -45.0        # Flight line angle: 0 = E-W, 90 = N-S
 
 # Column names in ground truth file
 X_COL = 'x'
@@ -86,11 +89,13 @@ def main():
 
     # Generate flight line datasets
     print(f"\nGenerating flight line datasets:")
-    print(f"  Dense spacing: {DENSE_SPACING} cells ({DENSE_SPACING * dx} units)")
-    print(f"  Sparse spacing: {SPARSE_SPACING} cells ({SPARSE_SPACING * dx} units)")
+    print(f"  Dense spacing:  {DENSE_SPACING} cells ({DENSE_SPACING * dx} units, gap={DENSE_SPACING-1})")
+    print(f"  Medium spacing: {MEDIUM_SPACING} cells ({MEDIUM_SPACING * dx} units, gap={MEDIUM_SPACING-1})")
+    print(f"  Sparse spacing: {SPARSE_SPACING} cells ({SPARSE_SPACING * dx} units, gap={SPARSE_SPACING-1})")
     print(f"  Angle: {ANGLE}° (0°=E-W, 90°=N-S)")
 
-    # Use extract_nested_flightlines directly for custom file naming
+    # Generate dense and sparse together (nested, since 8 is multiple of 4)
+    print("\nGenerating nested dense/sparse datasets:")
     datasets = extract_nested_flightlines(
         df_gt,
         spacings=[DENSE_SPACING, SPARSE_SPACING],
@@ -103,12 +108,23 @@ def main():
     df_dense = datasets['xyvc_dense']
     df_sparse = datasets['xyvc_sparse']
 
+    # Generate medium separately (6 is not a multiple of 4, so independent)
+    print("\nGenerating medium dataset (independent):")
+    df_medium = extract_flightlines(
+        df_gt,
+        angle=ANGLE,
+        spacing=MEDIUM_SPACING,
+        x_col=X_COL,
+        y_col=Y_COL,
+        save_path=str(OUTPUT_DIR / 'fl_xyvc_medium.csv'),
+    )
+
     # Compute statistics
     print("\n" + "=" * 70)
     print("DATASET SUMMARY")
     print("=" * 70)
 
-    for name, df in [("Dense", df_dense), ("Sparse", df_sparse)]:
+    for name, df in [("Dense", df_dense), ("Medium", df_medium), ("Sparse", df_sparse)]:
         n_points = len(df)
         n_lines = df[Y_COL].nunique() if ANGLE == 0 else df[X_COL].nunique()
         coverage = n_points / len(df_gt) * 100
@@ -129,25 +145,33 @@ def main():
 
     # Verify nesting
     dense_coords = set(zip(df_dense[X_COL], df_dense[Y_COL]))
+    medium_coords = set(zip(df_medium[X_COL], df_medium[Y_COL]))
     sparse_coords = set(zip(df_sparse[X_COL], df_sparse[Y_COL]))
 
     print("\n" + "=" * 70)
     print("NESTING VERIFICATION")
     print("=" * 70)
+
+    # Sparse should be subset of dense (8 is multiple of 4)
     if sparse_coords.issubset(dense_coords):
-        print("✓ PASSED: Sparse dataset is a proper subset of dense dataset")
-        print(f"  Dense has {len(dense_coords)} unique locations")
-        print(f"  Sparse has {len(sparse_coords)} unique locations")
+        print("✓ PASSED: Sparse is a proper subset of Dense (spacing 8 is multiple of 4)")
         print(f"  Sparse/Dense ratio: {len(sparse_coords)/len(dense_coords)*100:.1f}%")
     else:
         missing = sparse_coords - dense_coords
-        print(f"✗ FAILED: Sparse has {len(missing)} points not in dense!")
+        print(f"✗ FAILED: Sparse has {len(missing)} points not in Dense!")
+
+    # Medium is independent (6 is not a multiple of 4)
+    print(f"\nNote: Medium (spacing=6) is independent of Dense (spacing=4)")
+    print(f"  Dense:  {len(dense_coords)} unique locations")
+    print(f"  Medium: {len(medium_coords)} unique locations")
+    print(f"  Sparse: {len(sparse_coords)} unique locations")
 
     # Print output file locations
     print("\n" + "=" * 70)
     print("OUTPUT FILES")
     print("=" * 70)
     print(f"  Dense:  {OUTPUT_DIR / 'fl_xyvc_dense.csv'}")
+    print(f"  Medium: {OUTPUT_DIR / 'fl_xyvc_medium.csv'}")
     print(f"  Sparse: {OUTPUT_DIR / 'fl_xyvc_sparse.csv'}")
 
     print("\nDone!")
