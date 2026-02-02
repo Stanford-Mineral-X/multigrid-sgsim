@@ -16,13 +16,22 @@ Usage:
 """
 
 import argparse
+import sys
 import numpy as np
 import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize, LightSource
 from pathlib import Path
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from skimage.metrics import structural_similarity as ssim
+
+# Add src directory to path for geosoft colormap
+script_dir = Path(__file__).parent
+src_dir = script_dir.parent / 'src'
+sys.path.insert(0, str(src_dir))
+
+from utils import geosoft_cmap_k65
 
 
 def load_ground_truth(gt_path: str, rows: int, cols: int) -> np.ndarray:
@@ -212,55 +221,93 @@ def analyze_realizations(results_path: str, gt_path: str, output_path: str = Non
 
 def generate_figures(ds: xr.Dataset, ground_truth: np.ndarray, mean_field: np.ndarray,
                      output_dir: str, realization_metrics: dict):
-    """Generate error analysis figures."""
+    """Generate error analysis figures with geosoft colormap and hillshading."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Figure 1: Error maps
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    # Initialize colormap and light source
+    geosoft_cmap = geosoft_cmap_k65()
+    ls = LightSource(azdeg=315, altdeg=45)
 
-    # Ground truth
+    # Fixed color scale
+    vmin, vmax = -1000, 1500
+    norm = Normalize(vmin=vmin, vmax=vmax)
+
+    # Get extent from coordinates
+    x_coords = ds.x.values
+    y_coords = ds.y.values
+    extent = [x_coords.min(), x_coords.max(), y_coords.min(), y_coords.max()]
+
+    # Figure 1: Error maps with hillshading
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+
+    # Ground truth with hillshading
     ax = axes[0, 0]
-    im = ax.imshow(ground_truth, cmap='viridis', origin='lower')
+    gt_rgb = ls.shade(ground_truth, cmap=geosoft_cmap, blend_mode='soft', vmin=vmin, vmax=vmax)
+    ax.imshow(gt_rgb, origin='lower', extent=extent, interpolation='nearest')
     ax.set_title('Ground Truth')
-    plt.colorbar(im, ax=ax, label='Value')
+    ax.set_xlabel('x'); ax.set_ylabel('y')
+    sm = plt.cm.ScalarMappable(norm=norm, cmap=geosoft_cmap)
+    sm.set_array([])
+    plt.colorbar(sm, ax=ax, shrink=0.6, label='Value')
 
-    # Mean prediction
+    # Mean prediction with hillshading
     ax = axes[0, 1]
-    im = ax.imshow(mean_field, cmap='viridis', origin='lower')
+    mean_rgb = ls.shade(mean_field, cmap=geosoft_cmap, blend_mode='soft', vmin=vmin, vmax=vmax)
+    ax.imshow(mean_rgb, origin='lower', extent=extent, interpolation='nearest')
     ax.set_title(f'MGSIM Mean (R²={ds.attrs["mean_r2"]:.3f})')
-    plt.colorbar(im, ax=ax, label='Value')
+    ax.set_xlabel('x'); ax.set_ylabel('y')
+    plt.colorbar(sm, ax=ax, shrink=0.6, label='Value')
 
-    # Error
+    # Error (use diverging colormap, no hillshade)
     ax = axes[0, 2]
     error = ds['error'].values
-    vmax = np.percentile(np.abs(error), 99)
-    im = ax.imshow(error, cmap='RdBu_r', origin='lower', vmin=-vmax, vmax=vmax)
+    err_vmax = np.percentile(np.abs(error), 99)
+    im = ax.imshow(error, cmap='RdBu_r', origin='lower', extent=extent,
+                   vmin=-err_vmax, vmax=err_vmax, interpolation='nearest')
     ax.set_title(f'Error (Pred - True)\nRMSE={ds.attrs["mean_rmse"]:.3f}')
-    plt.colorbar(im, ax=ax, label='Error')
+    ax.set_xlabel('x'); ax.set_ylabel('y')
+    plt.colorbar(im, ax=ax, shrink=0.6, label='Error')
 
-    # Prediction variance
+    # Prediction variance with hillshading
     ax = axes[1, 0]
-    im = ax.imshow(ds['prediction_variance'].values, cmap='YlOrRd', origin='lower')
+    variance_data = ds['prediction_variance'].values
+    var_vmin, var_vmax = np.nanmin(variance_data), np.nanmax(variance_data)
+    var_norm = Normalize(vmin=var_vmin, vmax=var_vmax)
+    var_rgb = ls.shade(variance_data, cmap=geosoft_cmap, blend_mode='soft',
+                       vmin=var_vmin, vmax=var_vmax)
+    ax.imshow(var_rgb, origin='lower', extent=extent, interpolation='nearest')
     ax.set_title('Prediction Variance')
-    plt.colorbar(im, ax=ax, label='Variance')
+    ax.set_xlabel('x'); ax.set_ylabel('y')
+    sm_var = plt.cm.ScalarMappable(norm=var_norm, cmap=geosoft_cmap)
+    sm_var.set_array([])
+    plt.colorbar(sm_var, ax=ax, shrink=0.6, label='Variance')
 
-    # Absolute error
+    # Absolute error with hillshading
     ax = axes[1, 1]
-    im = ax.imshow(ds['abs_error'].values, cmap='Reds', origin='lower')
+    abs_err = ds['abs_error'].values
+    abs_vmin, abs_vmax = np.nanmin(abs_err), np.nanmax(abs_err)
+    abs_norm = Normalize(vmin=abs_vmin, vmax=abs_vmax)
+    abs_rgb = ls.shade(abs_err, cmap=plt.cm.Reds, blend_mode='soft',
+                       vmin=abs_vmin, vmax=abs_vmax)
+    ax.imshow(abs_rgb, origin='lower', extent=extent, interpolation='nearest')
     ax.set_title(f'Absolute Error\nMAE={ds.attrs["mean_mae"]:.3f}')
-    plt.colorbar(im, ax=ax, label='|Error|')
+    ax.set_xlabel('x'); ax.set_ylabel('y')
+    sm_abs = plt.cm.ScalarMappable(norm=abs_norm, cmap=plt.cm.Reds)
+    sm_abs.set_array([])
+    plt.colorbar(sm_abs, ax=ax, shrink=0.6, label='|Error|')
 
     # Scatter: variance vs abs error
     ax = axes[1, 2]
     variance = ds['prediction_variance'].values.flatten()
     abs_error = ds['abs_error'].values.flatten()
-    ax.scatter(variance, abs_error, alpha=0.1, s=1)
+    ax.scatter(variance, abs_error, alpha=0.1, s=1, c='#1f77b4')
     ax.set_xlabel('Prediction Variance')
     ax.set_ylabel('Absolute Error')
     ax.set_title('Variance vs Error')
     corr = np.corrcoef(variance, abs_error)[0, 1]
-    ax.text(0.05, 0.95, f'Corr: {corr:.3f}', transform=ax.transAxes, va='top')
+    ax.text(0.05, 0.95, f'Corr: {corr:.3f}', transform=ax.transAxes, va='top',
+            fontsize=12, bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
     plt.tight_layout()
     plt.savefig(output_path / 'error_maps.png', dpi=300, bbox_inches='tight')

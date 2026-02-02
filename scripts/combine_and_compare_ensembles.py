@@ -12,6 +12,7 @@ Usage:
 """
 
 import argparse
+import sys
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -20,7 +21,14 @@ from pathlib import Path
 from datetime import datetime
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from skimage.metrics import structural_similarity as ssim
-from matplotlib.colors import LightSource
+from matplotlib.colors import Normalize, LightSource
+
+# Add src directory to path for geosoft colormap
+script_dir = Path(__file__).parent
+src_dir = script_dir.parent / 'src'
+sys.path.insert(0, str(src_dir))
+
+from utils import geosoft_cmap_k65
 
 
 ENSEMBLE_NAMES = [
@@ -124,8 +132,11 @@ def analyze_ensemble(ds: xr.Dataset, ground_truth: np.ndarray) -> dict:
 
 
 def generate_comparison_figures(results: dict, ground_truth: np.ndarray, output_dir: Path):
-    """Generate comparison figures."""
+    """Generate comparison figures with hillshading."""
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize light source for hillshading
+    ls = LightSource(azdeg=315, altdeg=45)
 
     # Figure 1: Error maps for all ensembles (2 rows: error, variance)
     n_ensembles = len([n for n in ENSEMBLE_NAMES if n in results])
@@ -135,9 +146,13 @@ def generate_comparison_figures(results: dict, ground_truth: np.ndarray, output_
     if n_ensembles == 1:
         axes = axes.reshape(2, 1)
 
-    # Find common error scale
+    # Find common error and variance scales
     all_errors = [results[name]['error_field'] for name in ENSEMBLE_NAMES if name in results]
-    vmax = np.percentile(np.abs(np.concatenate([e.flatten() for e in all_errors])), 99)
+    all_vars = [results[name]['variance_field'] for name in ENSEMBLE_NAMES if name in results]
+    err_vmax = np.percentile(np.abs(np.concatenate([e.flatten() for e in all_errors])), 99)
+    var_vmin = min(np.nanmin(v) for v in all_vars)
+    var_vmax = max(np.nanmax(v) for v in all_vars)
+    var_norm = Normalize(vmin=var_vmin, vmax=var_vmax)
 
     col = 0
     for name in ENSEMBLE_NAMES:
@@ -145,17 +160,22 @@ def generate_comparison_figures(results: dict, ground_truth: np.ndarray, output_
             continue
         res = results[name]
 
-        # Error map
+        # Error map (diverging colormap, no hillshade for errors)
         ax = axes[0, col]
-        im = ax.imshow(res['error_field'], cmap='RdBu_r', origin='lower', vmin=-vmax, vmax=vmax)
+        im = ax.imshow(res['error_field'], cmap='RdBu_r', origin='lower',
+                       vmin=-err_vmax, vmax=err_vmax, interpolation='nearest')
         ax.set_title(f"{ENSEMBLE_LABELS[name]}\nRMSE={res['mean_metrics']['rmse']:.3f}")
-        plt.colorbar(im, ax=ax, label='Error')
+        plt.colorbar(im, ax=ax, shrink=0.8, label='Error')
 
-        # Variance map
+        # Variance map with hillshading
         ax = axes[1, col]
-        im = ax.imshow(res['variance_field'], cmap='YlOrRd', origin='lower')
+        var_rgb = ls.shade(res['variance_field'], cmap=plt.cm.YlOrRd, blend_mode='soft',
+                           vmin=var_vmin, vmax=var_vmax)
+        ax.imshow(var_rgb, origin='lower', interpolation='nearest')
         ax.set_title(f"Prediction Variance\nR²={res['mean_metrics']['r2']:.3f}")
-        plt.colorbar(im, ax=ax, label='Variance')
+        sm = plt.cm.ScalarMappable(norm=var_norm, cmap=plt.cm.YlOrRd)
+        sm.set_array([])
+        plt.colorbar(sm, ax=ax, shrink=0.8, label='Variance')
 
         col += 1
 
@@ -221,13 +241,88 @@ def generate_comparison_figures(results: dict, ground_truth: np.ndarray, output_
     print(f"  Figures saved to {output_dir}")
 
 
-def generate_hillshade_figures(combined_datasets: dict, output_dir: Path, cmap='viridis'):
+def generate_ground_truth_comparison(combined_datasets: dict, ground_truth: np.ndarray,
+                                     results: dict, output_dir: Path):
+    """Generate ground truth vs ensemble means comparison with hillshading.
+
+    Creates a publication-quality figure with ground truth and top ensemble predictions.
+    Stacked vertically with a single colorbar on the right.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize colormap and light source
+    geosoft_cmap = geosoft_cmap_k65()
+    ls = LightSource(azdeg=315, altdeg=45)
+
+    # Get ensembles sorted by R² (best first)
+    available = [n for n in ENSEMBLE_NAMES if n in results]
+    sorted_ensembles = sorted(available, key=lambda n: results[n]['mean_metrics']['r2'], reverse=True)
+
+    # Take top 3 ensembles for comparison
+    top_ensembles = sorted_ensembles[:min(3, len(sorted_ensembles))]
+
+    # Fixed color scale
+    vmin, vmax = -1000, 1500
+    norm = Normalize(vmin=vmin, vmax=vmax)
+
+    # Get extent from first dataset
+    first_ds = combined_datasets[top_ensembles[0]]
+    x_coords = first_ds.x.values
+    y_coords = first_ds.y.values
+    extent = [x_coords.min(), x_coords.max(), y_coords.min(), y_coords.max()]
+
+    # Create figure: stacked vertically (n_panels rows, 1 column)
+    n_panels = 1 + len(top_ensembles)
+    fig, axes = plt.subplots(n_panels, 1, figsize=(16, 4 * n_panels))
+
+    # Ground truth
+    ax = axes[0]
+    gt_rgb = ls.shade(ground_truth, cmap=geosoft_cmap, blend_mode='soft', vmin=vmin, vmax=vmax)
+    ax.imshow(gt_rgb, origin='lower', extent=extent, interpolation='nearest')
+    ax.set_title('Ground Truth', fontsize=12)
+    ax.set_xlabel('x'); ax.set_ylabel('y')
+
+    # Top ensembles
+    for i, name in enumerate(top_ensembles):
+        ax = axes[i + 1]
+        mean_field = combined_datasets[name]['mean'].values
+        r2 = results[name]['mean_metrics']['r2']
+        rmse = results[name]['mean_metrics']['rmse']
+
+        mean_rgb = ls.shade(mean_field, cmap=geosoft_cmap, blend_mode='soft', vmin=vmin, vmax=vmax)
+        ax.imshow(mean_rgb, origin='lower', extent=extent, interpolation='nearest')
+        ax.set_title(f'{ENSEMBLE_LABELS[name]}\nR²={r2:.3f}, RMSE={rmse:.3f}', fontsize=11)
+        ax.set_xlabel('x'); ax.set_ylabel('y')
+
+    # Add shared colorbar on the right
+    sm = plt.cm.ScalarMappable(norm=norm, cmap=geosoft_cmap)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='vertical', fraction=0.02, pad=0.02)
+    cbar.set_label('Value')
+
+    plt.tight_layout()
+    plt.savefig(output_dir / 'ground_truth_comparison.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"  Ground truth comparison saved to {output_dir}")
+
+
+def generate_hillshade_figures(combined_datasets: dict, output_dir: Path, cmap=None):
     """Generate hillshade figures showing ensemble mean + 3 random realizations.
 
     Creates one stacked figure (1 column, 4 rows) per ensemble.
+    Uses geosoft colormap by default.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     ls = LightSource(azdeg=315, altdeg=45)
+
+    # Use geosoft colormap by default
+    if cmap is None:
+        cmap_obj = geosoft_cmap_k65()
+    elif isinstance(cmap, str):
+        cmap_obj = plt.get_cmap(cmap)
+    else:
+        cmap_obj = cmap
 
     for name, ds in combined_datasets.items():
         n_real = len(ds.realization)
@@ -238,45 +333,43 @@ def generate_hillshade_figures(combined_datasets: dict, output_dir: Path, cmap='
         # Get ensemble mean
         mean_field = ds['mean'].values
 
+        # Get extent from coordinates
+        x_coords = ds.x.values
+        y_coords = ds.y.values
+        extent = [x_coords.min(), x_coords.max(), y_coords.min(), y_coords.max()]
+
         # Select 3 random realizations
         np.random.seed(42)  # For reproducibility
         random_indices = np.random.choice(n_real, size=3, replace=False)
         random_indices.sort()
 
-        # Compute common color scale across all 4 panels
-        all_fields = [mean_field] + [ds['simulated'].isel(realization=i).values for i in random_indices]
-        vmin = np.nanpercentile(np.concatenate([f.flatten() for f in all_fields]), 2)
-        vmax = np.nanpercentile(np.concatenate([f.flatten() for f in all_fields]), 98)
+        # Fixed color scale
+        vmin, vmax = -1000, 1500
+        norm = Normalize(vmin=vmin, vmax=vmax)
 
-        # Create figure: 1 column, 4 rows
-        fig, axes = plt.subplots(4, 1, figsize=(10, 24))
-
-        # Get colormap
-        if isinstance(cmap, str):
-            cmap_obj = plt.get_cmap(cmap)
-        else:
-            cmap_obj = cmap
+        # Create figure: 1 column, 4 rows (wide aspect ratio for 50x200 grid)
+        fig, axes = plt.subplots(4, 1, figsize=(16, 20))
 
         # Panel 0: Ensemble mean
         ax = axes[0]
         mean_rgb = ls.shade(mean_field, cmap=cmap_obj, blend_mode='soft', vmin=vmin, vmax=vmax)
-        ax.imshow(mean_rgb, origin='lower', interpolation='nearest')
+        ax.imshow(mean_rgb, origin='lower', extent=extent, interpolation='nearest')
         ax.set_title(f'{ENSEMBLE_LABELS[name]}\nEnsemble Mean (n={n_real})', fontsize=12)
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
 
         # Panels 1-3: Random realizations
         for i, real_idx in enumerate(random_indices):
             ax = axes[i + 1]
             realization = ds['simulated'].isel(realization=real_idx).values
             real_rgb = ls.shade(realization, cmap=cmap_obj, blend_mode='soft', vmin=vmin, vmax=vmax)
-            ax.imshow(real_rgb, origin='lower', interpolation='nearest')
+            ax.imshow(real_rgb, origin='lower', extent=extent, interpolation='nearest')
             ax.set_title(f'Realization {int(real_idx)}', fontsize=12)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
+            ax.set_xlabel('x')
+            ax.set_ylabel('y')
 
         # Add colorbar
-        sm = plt.cm.ScalarMappable(cmap=cmap_obj, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+        sm = plt.cm.ScalarMappable(cmap=cmap_obj, norm=norm)
         sm.set_array([])
         cbar = fig.colorbar(sm, ax=axes, orientation='vertical', fraction=0.02, pad=0.04)
         cbar.set_label('Value')
@@ -327,8 +420,8 @@ def main():
                         help='Path to ground truth CSV')
     parser.add_argument('--output-dir', type=str, default='analysis',
                         help='Output directory for figures and tables')
-    parser.add_argument('--cmap', type=str, default='viridis',
-                        help='Colormap for hillshade figures (default: viridis)')
+    parser.add_argument('--cmap', type=str, default=None,
+                        help='Colormap for hillshade figures (default: geosoft_k65)')
 
     args = parser.parse_args()
 
@@ -372,6 +465,10 @@ def main():
     # Generate comparison figures
     print("\nGenerating comparison figures...")
     generate_comparison_figures(results, ground_truth, output_dir / 'figures')
+
+    # Generate ground truth comparison (publication figure)
+    print("\nGenerating ground truth comparison figure...")
+    generate_ground_truth_comparison(combined_datasets, ground_truth, results, output_dir / 'figures')
 
     # Generate hillshade figures (mean + 3 random realizations per ensemble)
     print("\nGenerating hillshade realization figures...")
