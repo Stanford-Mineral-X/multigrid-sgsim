@@ -16,7 +16,7 @@
 # - Tasks 1-9: SGSIM realizations (100 per task = 1000 total per dataset)
 #
 # Usage:
-#   sbatch submit_standard_geostats.sh
+#   sbatch submit_standard_geostats.sbatch
 # =============================================================================
 
 # --- Configuration ---
