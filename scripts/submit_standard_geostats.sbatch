@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=std_geostats
-#SBATCH --partition=normal
-#SBATCH --time=04:00:00
+#SBATCH --partition=serc
+#SBATCH --time=08:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=1
 #SBATCH --array=0-9
