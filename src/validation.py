@@ -218,6 +218,120 @@ def assign_line_ids(
     return df_out
 
 
+def leave_lines_out(
+    df_xyvtcs: pd.DataFrame,
+    holdout_ids: list[int],
+    line_angle_deg: float = 0.0,
+    line_spacing: float = 50.0,
+    x_col: str = 'x',
+    y_col: str = 'y',
+    value_col: str = 'value',
+    set_col: str = 'set',
+    df_fl_with_ids: pd.DataFrame | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Hold out flight lines from the MGSIM input for cross-validation.
+
+    Identifies distinct flight lines among observation points, removes the
+    specified lines from conditioning (by setting value=NaN and set=0), and
+    returns the reduced DataFrame alongside the held-out ground truth.
+
+    Parameters
+    ----------
+    df_xyvtcs : pd.DataFrame
+        Full MGSIM input DataFrame with columns [x, y, value, trend, cluster, set].
+        Observation points have set=1 and non-NaN values.
+    holdout_ids : list[int]
+        Line IDs to hold out (as assigned by assign_line_ids).
+    line_angle_deg : float, default=0.0
+        Flight line angle in degrees for line identification (0 = E-W).
+    line_spacing : float, default=50.0
+        Approximate spacing between flight lines (in coordinate units).
+    x_col, y_col : str
+        Coordinate column names.
+    value_col : str
+        Value column name.
+    set_col : str
+        Set indicator column name (1=observation, 0=grid-only).
+    df_fl_with_ids : pd.DataFrame, optional
+        Pre-computed flight line DataFrame with 'line_id' column
+        (e.g., from a previous call to assign_line_ids). If provided,
+        line_angle_deg and line_spacing are ignored.
+
+    Returns
+    -------
+    df_reduced : pd.DataFrame
+        Copy of df_xyvtcs with held-out points converted to grid-only
+        (value=NaN, set=0). Grid geometry is preserved.
+    df_holdout : pd.DataFrame
+        The held-out observation points with their original values.
+        Includes 'line_id' column.
+    df_fl_ids : pd.DataFrame
+        All flight line points with assigned line IDs (useful for plotting
+        and subsequent calls).
+
+    Notes
+    -----
+    The held-out points remain in the grid (same row count) but are treated
+    as non-observation points by MGSIM. This preserves the grid geometry
+    while removing their conditioning influence.
+
+    Examples
+    --------
+    >>> df_reduced, df_holdout, df_fl_ids = leave_lines_out(
+    ...     df_xyvtcs, holdout_ids=[10, 25],
+    ...     line_angle_deg=0, line_spacing=50
+    ... )
+    >>> # Run MGSIM on reduced data
+    >>> df_mgsim = mgsim(mg_resols, df_reduced, df_gamma, ...)
+    >>> # Compare realizations at held-out locations
+    """
+    # Identify flight line points
+    obs_mask = df_xyvtcs[set_col] == 1
+
+    if df_fl_with_ids is not None:
+        df_fl_ids = df_fl_with_ids.copy()
+    else:
+        # Assign line IDs to observation points only
+        df_obs = df_xyvtcs.loc[obs_mask].copy()
+        df_fl_ids = assign_line_ids(
+            df_obs, angle_deg=line_angle_deg, spacing=line_spacing,
+            x_col=x_col, y_col=y_col
+        )
+
+    n_lines = df_fl_ids['line_id'].nunique()
+    n_obs = len(df_fl_ids)
+
+    # Validate holdout IDs
+    available_ids = set(df_fl_ids['line_id'].unique())
+    invalid_ids = set(holdout_ids) - available_ids
+    if invalid_ids:
+        raise ValueError(
+            f"Holdout line IDs {invalid_ids} not found. "
+            f"Available IDs: 0 to {max(available_ids)}"
+        )
+
+    # Extract held-out points
+    holdout_mask_fl = df_fl_ids['line_id'].isin(holdout_ids)
+    df_holdout = df_fl_ids.loc[holdout_mask_fl].copy()
+    holdout_indices = df_holdout.index
+
+    # Build reduced DataFrame
+    df_reduced = df_xyvtcs.copy()
+    df_reduced.loc[holdout_indices, value_col] = np.nan
+    df_reduced.loc[holdout_indices, set_col] = 0
+
+    # Report
+    n_holdout = len(df_holdout)
+    n_remaining = obs_mask.sum() - n_holdout
+    print(f"Leave-lines-out: {n_lines} total lines, holding out {len(holdout_ids)} "
+          f"({n_holdout} points)")
+    print(f"  Remaining observations: {n_remaining}")
+    print(f"  Held-out lines: {holdout_ids}")
+
+    return df_reduced, df_holdout, df_fl_ids
+
+
 def extract_ensemble_along_line(
     ds: xr.Dataset,
     df_line: pd.DataFrame,

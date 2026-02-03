@@ -37,7 +37,7 @@ src_dir = script_dir.parent / 'src'
 sys.path.insert(0, str(src_dir))
 
 try:
-    import GStatSim as gs
+    import gstatsim as gs
 except ImportError:
     print("GStatSim not found. Install with: pip install gstatsim")
     sys.exit(1)

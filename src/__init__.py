@@ -6,6 +6,7 @@ from .segmenting import asm_energy, asm_cluster
 from .validation import (
     robust_mahalanobis_distance,
     assign_line_ids,
+    leave_lines_out,
     extract_ensemble_along_line,
     plot_validation_frame,
     create_validation_animation,
@@ -25,6 +26,7 @@ __all__ = [
     # Validation
     "robust_mahalanobis_distance",
     "assign_line_ids",
+    "leave_lines_out",
     "extract_ensemble_along_line",
     "plot_validation_frame",
     "create_validation_animation",
