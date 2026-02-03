@@ -23,7 +23,7 @@
 DATASETS=("dense" "sparse")
 REALIZATIONS_PER_TASK=100
 CONFIGS_DIR="../configs"
-RESULTS_DIR="../results/standard_geostats"
+RESULTS_DIR="/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/results/standard_geostats"
 
 # --- Environment ---
 module load python/3.9
