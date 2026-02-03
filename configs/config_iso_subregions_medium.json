@@ -1,14 +1,40 @@
 {
-  "data_file": "config_iso_global_dense_data.csv",
-  "variograms_list": null,
-  "vario": [
-    0.0,
-    0,
-    21.38197128755821,
-    21.38197128755821,
-    134774.88997097916,
-    "Exponential"
+  "data_file": "config_iso_subregions_medium_data.csv",
+  "variograms_list": [
+    [
+      0.0,
+      0,
+      21.996707525783368,
+      21.996707525783368,
+      78631.94908677833,
+      "Exponential"
+    ],
+    [
+      0.0,
+      0,
+      14.518400511809755,
+      14.518400511809755,
+      145933.86360462182,
+      "Exponential"
+    ],
+    [
+      0.0,
+      0,
+      19.61755329492222,
+      19.61755329492222,
+      224718.71279451373,
+      "Exponential"
+    ],
+    [
+      0.0,
+      0,
+      28.199487272729716,
+      28.199487272729716,
+      132774.03277041062,
+      "Exponential"
+    ]
   ],
+  "vario": null,
   "mg_resols": [
     16,
     8,
@@ -285,8 +311,8 @@
     "sgs_or_krige": "sgs"
   },
   "metadata": {
-    "ensemble_name": "iso_global_dense",
-    "use_subregions": false,
+    "ensemble_name": "iso_subregions_medium",
+    "use_subregions": true,
     "variogram_model": "exponential",
     "maxlag": 40,
     "n_lags": 20

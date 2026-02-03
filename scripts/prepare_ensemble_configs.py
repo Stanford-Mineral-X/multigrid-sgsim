@@ -53,7 +53,7 @@ MG_RESOLS = [16, 8, 4, 2, 1]
 
 # MGSIM parameters
 NUM_POINTS = 10
-RADIUS = 400
+RADIUS = 40
 
 # Trend parameters (RBF interpolation)
 SMOOTHING = 100.0
@@ -62,7 +62,7 @@ LINESPACING = 5
 # Variogram fitting parameters
 MAXLAG = 40
 N_LAGS = 20
-VARIOGRAM_MODEL = 'gaussian'
+VARIOGRAM_MODEL = 'exponential'
 
 # Directional variogram parameters (for anisotropic cases)
 AZIMUTHS = [0, 45, 90, 135]  # directions to check

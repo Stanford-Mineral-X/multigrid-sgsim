@@ -1,21 +1,5 @@
 {
-  "data_file": "config_iso_global_dense_data.csv",
-  "variograms_list": null,
-  "vario": [
-    0.0,
-    0,
-    21.38197128755821,
-    21.38197128755821,
-    134774.88997097916,
-    "Exponential"
-  ],
-  "mg_resols": [
-    16,
-    8,
-    4,
-    2,
-    1
-  ],
+  "data_file": "config_iso_subregions_dense_data.csv",
   "grid_shape": [
     50,
     200
@@ -274,21 +258,14 @@
     48.0,
     49.0
   ],
-  "use_nst": false,
-  "mgsim_kwargs": {
-    "xx": "x",
-    "yy": "y",
-    "zz": "residual",
-    "kk": "cluster",
-    "num_points": 10,
-    "radius": 40,
-    "sgs_or_krige": "sgs"
-  },
+  "num_points": 10,
+  "radius": 40,
+  "variogram_model": "exponential",
+  "maxlag": 40,
+  "n_lags": 20,
   "metadata": {
-    "ensemble_name": "iso_global_dense",
-    "use_subregions": false,
-    "variogram_model": "exponential",
-    "maxlag": 40,
-    "n_lags": 20
+    "method": "sgsim",
+    "dataset": "dense",
+    "variogram_model": "exponential"
   }
 }

@@ -4,10 +4,10 @@
   "vario": [
     90,
     0,
-    13.372700379851796,
-    12.245120492277866,
-    128780.44504782539,
-    "Gaussian"
+    21.38197128755821,
+    18.114139107131933,
+    134774.88997097916,
+    "Exponential"
   ],
   "mg_resols": [
     16,
@@ -281,13 +281,13 @@
     "zz": "residual",
     "kk": "cluster",
     "num_points": 10,
-    "radius": 400,
+    "radius": 40,
     "sgs_or_krige": "sgs"
   },
   "metadata": {
     "ensemble_name": "aniso_global_dense",
     "use_subregions": false,
-    "variogram_model": "gaussian",
+    "variogram_model": "exponential",
     "maxlag": 40,
     "n_lags": 20
   }

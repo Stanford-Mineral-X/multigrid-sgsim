@@ -55,7 +55,7 @@ def prepare_synthetic_data_config():
         'zz': 'residual',  # or 'Nresidual' if using NST
         'kk': 'cluster',
         'num_points': 10,
-        'radius': 400,
+        'radius': 40,
         'sgs_or_krige': 'sgs',
     }
 
@@ -67,7 +67,7 @@ def prepare_synthetic_data_config():
     # Variogram parameters
     maxlag = 40
     n_lags = 20
-    variogram_model = 'gaussian'
+    variogram_model = 'exponential'
 
     # =========================================================================
     # LOAD AND PREPARE DATA

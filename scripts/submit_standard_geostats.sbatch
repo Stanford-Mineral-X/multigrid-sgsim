@@ -38,8 +38,11 @@ OUTPUT_DIR="/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/r
 REPO_DIR="/oak/stanford/groups/cyaolai/JoshRines/repos/multigrid-sgsim"
 SCRIPT_DIR="${REPO_DIR}/scripts"
 CONFIG_DIR="${REPO_DIR}/configs"
-CONFIG_DENSE="${CONFIG_DIR}/config_iso_subregions_dense.json"
-CONFIG_SPARSE="${CONFIG_DIR}/config_iso_subregions_sparse.json"
+# Dedicated standard geostats configs (exponential variogram, radius=40, k=10)
+CONFIG_KRIGING_DENSE="${CONFIG_DIR}/config_standard_kriging_dense.json"
+CONFIG_KRIGING_SPARSE="${CONFIG_DIR}/config_standard_kriging_sparse.json"
+CONFIG_SGSIM_DENSE="${CONFIG_DIR}/config_standard_sgsim_dense.json"
+CONFIG_SGSIM_SPARSE="${CONFIG_DIR}/config_standard_sgsim_sparse.json"
 
 # --- ENVIRONMENT SETUP ---
 echo "=============================================="
@@ -76,11 +79,11 @@ if [ ${TASK_ID} -eq 0 ]; then
     # Task 0: Kriging for dense
     echo ""
     echo "=== Running Kriging on DENSE data ==="
-    echo "Config: ${CONFIG_DENSE}"
+    echo "Config: ${CONFIG_KRIGING_DENSE}"
     echo ""
 
     python run_standard_geostats.py \
-        --config ${CONFIG_DENSE} \
+        --config ${CONFIG_KRIGING_DENSE} \
         --method kriging \
         --output ${OUTPUT_DIR}/dense/kriging_result.nc
 
@@ -88,11 +91,11 @@ elif [ ${TASK_ID} -eq 1 ]; then
     # Task 1: Kriging for sparse
     echo ""
     echo "=== Running Kriging on SPARSE data ==="
-    echo "Config: ${CONFIG_SPARSE}"
+    echo "Config: ${CONFIG_KRIGING_SPARSE}"
     echo ""
 
     python run_standard_geostats.py \
-        --config ${CONFIG_SPARSE} \
+        --config ${CONFIG_KRIGING_SPARSE} \
         --method kriging \
         --output ${OUTPUT_DIR}/sparse/kriging_result.nc
 
@@ -109,12 +112,12 @@ elif [ ${TASK_ID} -ge 2 ] && [ ${TASK_ID} -le 11 ]; then
 
     echo ""
     echo "=== Running SGSIM on DENSE data ==="
-    echo "Config: ${CONFIG_DENSE}"
+    echo "Config: ${CONFIG_SGSIM_DENSE}"
     echo "Realizations: ${START} to $((END - 1))"
     echo ""
 
     python run_standard_geostats.py \
-        --config ${CONFIG_DENSE} \
+        --config ${CONFIG_SGSIM_DENSE} \
         --method sgsim \
         --start ${START} \
         --end ${END} \
@@ -133,12 +136,12 @@ elif [ ${TASK_ID} -ge 12 ] && [ ${TASK_ID} -le 21 ]; then
 
     echo ""
     echo "=== Running SGSIM on SPARSE data ==="
-    echo "Config: ${CONFIG_SPARSE}"
+    echo "Config: ${CONFIG_SGSIM_SPARSE}"
     echo "Realizations: ${START} to $((END - 1))"
     echo ""
 
     python run_standard_geostats.py \
-        --config ${CONFIG_SPARSE} \
+        --config ${CONFIG_SGSIM_SPARSE} \
         --method sgsim \
         --start ${START} \
         --end ${END} \
