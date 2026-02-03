@@ -34,8 +34,10 @@ SGSIM_TASKS_PER_DATASET=10
 REALIZATIONS_PER_TASK=$((REALIZATIONS_PER_ENSEMBLE / SGSIM_TASKS_PER_DATASET))
 OUTPUT_DIR="/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/results/standard_geostats"
 
-# Config files (same as MGSIM ensembles for data consistency)
-CONFIG_DIR="${SLURM_SUBMIT_DIR}/../configs"
+# Repo layout (works regardless of where sbatch is submitted from)
+REPO_DIR="/oak/stanford/groups/cyaolai/JoshRines/repos/multigrid-sgsim"
+SCRIPT_DIR="${REPO_DIR}/scripts"
+CONFIG_DIR="${REPO_DIR}/configs"
 CONFIG_DENSE="${CONFIG_DIR}/config_iso_subregions_dense.json"
 CONFIG_SPARSE="${CONFIG_DIR}/config_iso_subregions_sparse.json"
 
@@ -65,7 +67,7 @@ mkdir -p ${OUTPUT_DIR}/sparse
 mkdir -p /oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_${SLURM_ARRAY_JOB_ID}
 
 # Change to script directory
-cd $SLURM_SUBMIT_DIR
+cd $SCRIPT_DIR
 
 # --- DETERMINE WHAT TO RUN BASED ON ARRAY TASK ID ---
 TASK_ID=${SLURM_ARRAY_TASK_ID}
