@@ -2,81 +2,153 @@
 #SBATCH --job-name=std_geostats
 #SBATCH --partition=serc
 #SBATCH --time=08:00:00
-#SBATCH --mem=16G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --array=0-9
-#SBATCH --output=logs/std_geostats_%A_%a.out
-#SBATCH --error=logs/std_geostats_%A_%a.err
+#SBATCH --mem=16G
+#SBATCH --array=0-21
+#SBATCH --output=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/std_geostats_%A_%a.out
+#SBATCH --error=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/std_geostats_%A_%a.err
 
-# =============================================================================
-# Run Standard Geostatistics (Kriging + SGSIM) for Comparison
+# ============================================================================
+# Standard Geostatistics (Kriging + SGSIM) for Comparison with MGSIM
+# ============================================================================
 #
-# This script runs as a SLURM array job:
-# - Task 0: Kriging for all datasets
-# - Tasks 1-9: SGSIM realizations (100 per task = 1000 total per dataset)
+# This script runs Kriging and SGSIM using the SAME config files as MGSIM
+# to ensure a fair comparison (same data, same grid, same variograms).
 #
-# Usage:
-#   sbatch submit_standard_geostats.sbatch
-# =============================================================================
+# Array structure (22 tasks):
+#   Task 0:       Kriging for dense data
+#   Task 1:       Kriging for sparse data
+#   Tasks 2-11:   SGSIM realizations for dense (100 per task = 1000 total)
+#   Tasks 12-21:  SGSIM realizations for sparse (100 per task = 1000 total)
+#
+# We use the iso_subregions configs since Kriging/SGSIM use a single global
+# variogram anyway (not cluster-specific).
+#
+# ============================================================================
 
-# --- Configuration ---
-DATASETS=("dense" "sparse")
-REALIZATIONS_PER_TASK=100
-CONFIGS_DIR="../configs"
-RESULTS_DIR="/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/results/standard_geostats"
+# --- USER PARAMETERS ---
+REALIZATIONS_PER_ENSEMBLE=1000
+SGSIM_TASKS_PER_DATASET=10
+REALIZATIONS_PER_TASK=$((REALIZATIONS_PER_ENSEMBLE / SGSIM_TASKS_PER_DATASET))
+OUTPUT_DIR="/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/results/standard_geostats"
 
-# --- Environment ---
-module load python/3.9
-source ~/envs/mgsim/bin/activate  # Adjust to your conda/venv
+# Config files (same as MGSIM ensembles for data consistency)
+CONFIG_DIR="${SLURM_SUBMIT_DIR}/../configs"
+CONFIG_DENSE="${CONFIG_DIR}/config_iso_subregions_dense.json"
+CONFIG_SPARSE="${CONFIG_DIR}/config_iso_subregions_sparse.json"
 
-# --- Create directories ---
-mkdir -p ${RESULTS_DIR}
-mkdir -p logs
+# --- ENVIRONMENT SETUP ---
+echo "=============================================="
+echo "Standard Geostatistics Processing"
+echo "=============================================="
+echo "Job ID: $SLURM_JOB_ID"
+echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
+echo "Node: $SLURMD_NODENAME"
+echo "Start time: $(date)"
+echo "=============================================="
 
-# --- Determine what to run based on array task ID ---
+# Load environment (same as submit_all_ensembles.sbatch)
+ml system
+ml python/3.12.1
+source /oak/stanford/groups/cyaolai/JoshRines/mineralx/venvs/venv_mgsim/bin/activate
+
+# Force unbuffered Python output (for live log viewing)
+export PYTHONUNBUFFERED=1
+
+# Create output directories
+mkdir -p ${OUTPUT_DIR}/dense
+mkdir -p ${OUTPUT_DIR}/sparse
+
+# Create log directory for this job
+mkdir -p /oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_${SLURM_ARRAY_JOB_ID}
+
+# Change to script directory
+cd $SLURM_SUBMIT_DIR
+
+# --- DETERMINE WHAT TO RUN BASED ON ARRAY TASK ID ---
 TASK_ID=${SLURM_ARRAY_TASK_ID}
 
 if [ ${TASK_ID} -eq 0 ]; then
-    # Task 0: Run kriging for all datasets
-    echo "=== Running Kriging for all datasets ==="
+    # Task 0: Kriging for dense
+    echo ""
+    echo "=== Running Kriging on DENSE data ==="
+    echo "Config: ${CONFIG_DENSE}"
+    echo ""
 
-    for DATASET in "${DATASETS[@]}"; do
-        CONFIG="${CONFIGS_DIR}/config_iso_subregions_${DATASET}.json"
-        OUTPUT_DIR="${RESULTS_DIR}/${DATASET}"
-        mkdir -p ${OUTPUT_DIR}
+    python run_standard_geostats.py \
+        --config ${CONFIG_DENSE} \
+        --method kriging \
+        --output ${OUTPUT_DIR}/dense/kriging_result.nc
 
-        echo "Running Kriging on ${DATASET}..."
-        python run_standard_geostats.py \
-            --config ${CONFIG} \
-            --method kriging \
-            --output ${OUTPUT_DIR}/kriging_result.nc
+elif [ ${TASK_ID} -eq 1 ]; then
+    # Task 1: Kriging for sparse
+    echo ""
+    echo "=== Running Kriging on SPARSE data ==="
+    echo "Config: ${CONFIG_SPARSE}"
+    echo ""
 
-        echo "Kriging ${DATASET} complete."
-    done
+    python run_standard_geostats.py \
+        --config ${CONFIG_SPARSE} \
+        --method kriging \
+        --output ${OUTPUT_DIR}/sparse/kriging_result.nc
 
-else
-    # Tasks 1-9: Run SGSIM realizations
-    SGSIM_TASK=$((TASK_ID - 1))  # 0-8
+elif [ ${TASK_ID} -ge 2 ] && [ ${TASK_ID} -le 11 ]; then
+    # Tasks 2-11: SGSIM for dense
+    SGSIM_TASK=$((TASK_ID - 2))  # 0-9
     START=$((SGSIM_TASK * REALIZATIONS_PER_TASK))
     END=$((START + REALIZATIONS_PER_TASK))
 
-    echo "=== Running SGSIM realizations ${START}-${END} ==="
+    # Handle last task
+    if [ ${SGSIM_TASK} -eq $((SGSIM_TASKS_PER_DATASET - 1)) ]; then
+        END=${REALIZATIONS_PER_ENSEMBLE}
+    fi
 
-    for DATASET in "${DATASETS[@]}"; do
-        CONFIG="${CONFIGS_DIR}/config_iso_subregions_${DATASET}.json"
-        OUTPUT_DIR="${RESULTS_DIR}/${DATASET}"
-        mkdir -p ${OUTPUT_DIR}
+    echo ""
+    echo "=== Running SGSIM on DENSE data ==="
+    echo "Config: ${CONFIG_DENSE}"
+    echo "Realizations: ${START} to $((END - 1))"
+    echo ""
 
-        echo "Running SGSIM ${START}-${END} on ${DATASET}..."
-        python run_standard_geostats.py \
-            --config ${CONFIG} \
-            --method sgsim \
-            --start ${START} \
-            --end ${END} \
-            --output ${OUTPUT_DIR}/sgsim_realizations_${START}_${END}.nc
+    python run_standard_geostats.py \
+        --config ${CONFIG_DENSE} \
+        --method sgsim \
+        --start ${START} \
+        --end ${END} \
+        --output ${OUTPUT_DIR}/dense/sgsim_realizations_${START}_${END}.nc
 
-        echo "SGSIM ${DATASET} ${START}-${END} complete."
-    done
+elif [ ${TASK_ID} -ge 12 ] && [ ${TASK_ID} -le 21 ]; then
+    # Tasks 12-21: SGSIM for sparse
+    SGSIM_TASK=$((TASK_ID - 12))  # 0-9
+    START=$((SGSIM_TASK * REALIZATIONS_PER_TASK))
+    END=$((START + REALIZATIONS_PER_TASK))
+
+    # Handle last task
+    if [ ${SGSIM_TASK} -eq $((SGSIM_TASKS_PER_DATASET - 1)) ]; then
+        END=${REALIZATIONS_PER_ENSEMBLE}
+    fi
+
+    echo ""
+    echo "=== Running SGSIM on SPARSE data ==="
+    echo "Config: ${CONFIG_SPARSE}"
+    echo "Realizations: ${START} to $((END - 1))"
+    echo ""
+
+    python run_standard_geostats.py \
+        --config ${CONFIG_SPARSE} \
+        --method sgsim \
+        --start ${START} \
+        --end ${END} \
+        --output ${OUTPUT_DIR}/sparse/sgsim_realizations_${START}_${END}.nc
+
+else
+    echo "ERROR: Unknown task ID ${TASK_ID}"
+    exit 1
 fi
 
-echo "Task ${TASK_ID} finished at $(date)"
+# --- COMPLETION ---
+echo ""
+echo "=============================================="
+echo "Task ${TASK_ID} completed at: $(date)"
+echo "=============================================="
