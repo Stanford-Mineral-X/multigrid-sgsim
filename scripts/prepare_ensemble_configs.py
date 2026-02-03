@@ -49,7 +49,7 @@ ROWS = 50
 COLS = 200
 
 # Multigrid resolutions (coarse to fine)
-MG_RESOLS = [16, 8, 4, 2, 1]
+MG_RESOLS = [20, 15, 10, 5, 4, 3, 2, 1]
 
 # MGSIM parameters
 NUM_POINTS = 10
