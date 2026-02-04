@@ -14,6 +14,7 @@ Usage:
     python prepare_ensemble_configs.py
 """
 
+import argparse
 import json
 import numpy as np
 import pandas as pd
@@ -338,12 +339,13 @@ def fit_anisotropic_variograms(df_fl, use_subregions=True):
 
 
 def save_config(df_xyvtcs, x_coords, y_coords, ensemble_name, use_subregions,
-                df_gamma=None, vario=None, output_dir=None):
+                df_gamma=None, vario=None, output_dir=None,
+                config_prefix='', data_ensemble_name=None):
     """Save configuration to portable files (CSV + JSON).
 
     Creates:
-    - config_{ensemble_name}_data.csv: The DataFrame
-    - config_{ensemble_name}.json: All other parameters
+    - config_{ensemble_name}_data.csv: The DataFrame (skipped if config_prefix is set)
+    - config_{config_prefix}{ensemble_name}.json: All other parameters
 
     Parameters
     ----------
@@ -361,6 +363,11 @@ def save_config(df_xyvtcs, x_coords, y_coords, ensemble_name, use_subregions,
         Single variogram [azimuth, nugget, major_range, minor_range, sill, vtype] for global mode (okrige_sgs)
     output_dir : Path, optional
         Output directory
+    config_prefix : str
+        Prefix for JSON config filename (e.g., 'sph_'). When set, reuses
+        existing data CSV (no new CSV is written).
+    data_ensemble_name : str, optional
+        Ensemble name to reference for the data CSV. If None, uses ensemble_name.
     """
     if output_dir is None:
         output_dir = OUTPUT_DIR
@@ -388,14 +395,21 @@ def save_config(df_xyvtcs, x_coords, y_coords, ensemble_name, use_subregions,
     if df_gamma is not None:
         variograms_list = df_gamma['Variogram'].tolist()
 
-    # Save DataFrame as CSV (portable across pandas versions)
-    csv_path = output_dir / f"config_{ensemble_name}_data.csv"
-    df_xyvtcs.to_csv(csv_path, index=False)
-    print(f"  Saved DataFrame to {csv_path}")
+    # Determine which data CSV to reference
+    data_name = data_ensemble_name if data_ensemble_name else ensemble_name
+    data_csv_name = f"config_{data_name}_data.csv"
+
+    # Only save DataFrame if no config_prefix (i.e., original run)
+    if not config_prefix:
+        csv_path = output_dir / data_csv_name
+        df_xyvtcs.to_csv(csv_path, index=False)
+        print(f"  Saved DataFrame to {csv_path}")
+    else:
+        print(f"  Reusing existing data CSV: {data_csv_name}")
 
     # Build config dict with JSON-serializable types
     config = {
-        'data_file': f"config_{ensemble_name}_data.csv",  # Relative path
+        'data_file': data_csv_name,  # Relative path (points to original data)
         'variograms_list': variograms_list,  # List of [az, nug, maj, min, sill, vtype] per cluster
         'vario': vario,                      # Single variogram for global mode
         'mg_resols': MG_RESOLS,
@@ -405,7 +419,7 @@ def save_config(df_xyvtcs, x_coords, y_coords, ensemble_name, use_subregions,
         'use_nst': USE_NST,
         'mgsim_kwargs': mgsim_kwargs,
         'metadata': {
-            'ensemble_name': ensemble_name,
+            'ensemble_name': f"{config_prefix}{ensemble_name}",
             'use_subregions': use_subregions,
             'variogram_model': VARIOGRAM_MODEL,
             'maxlag': MAXLAG,
@@ -413,8 +427,8 @@ def save_config(df_xyvtcs, x_coords, y_coords, ensemble_name, use_subregions,
         }
     }
 
-    # Save config as JSON
-    json_path = output_dir / f"config_{ensemble_name}.json"
+    # Save config as JSON (with prefix in filename)
+    json_path = output_dir / f"config_{config_prefix}{ensemble_name}.json"
     with open(json_path, 'w') as f:
         json.dump(config, f, indent=2)
     print(f"  Saved config to {json_path}")
@@ -427,8 +441,28 @@ def save_config(df_xyvtcs, x_coords, y_coords, ensemble_name, use_subregions,
 # =============================================================================
 
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Generate MGSIM ensemble configs')
+    parser.add_argument('--variogram-model', type=str, default=None,
+                        help='Override variogram model (e.g., spherical, exponential, gaussian)')
+    parser.add_argument('--config-prefix', type=str, default='',
+                        help='Prefix for config JSON filenames (e.g., "sph_"). '
+                             'When set, reuses existing data CSVs instead of rewriting them.')
+    args = parser.parse_args()
+
+    # Override global variogram model if specified
+    global VARIOGRAM_MODEL
+    if args.variogram_model:
+        VARIOGRAM_MODEL = args.variogram_model
+
+    config_prefix = args.config_prefix
+
     print("=" * 70)
     print("MGSIM ENSEMBLE CONFIGURATION GENERATOR")
+    print(f"  Variogram model: {VARIOGRAM_MODEL}")
+    if config_prefix:
+        print(f"  Config prefix: {config_prefix}")
+        print(f"  (Reusing existing data CSVs)")
     print("=" * 70)
 
     # Define 6 ensembles:
@@ -445,7 +479,7 @@ def main():
 
     for ens in ensembles:
         print(f"\n{'='*70}")
-        print(f"Ensemble: {ens['name']}")
+        print(f"Ensemble: {config_prefix}{ens['name']}")
         print(f"  Subregions: {ens['use_subregions']}")
         print(f"  Anisotropic: {ens['anisotropic']}")
         print(f"  Flight lines: {ens['fl_path'].name}")
@@ -454,13 +488,25 @@ def main():
         # Load data for this ensemble
         df_gt, df_fl, x_coords, y_coords = load_data(fl_path=ens['fl_path'])
 
-        # Compute trend
-        print("\nComputing trend...")
-        df_xyvtcs = compute_trend(df_fl, df_gt, use_subregions=ens['use_subregions'])
+        # Compute trend (or load existing data if using prefix)
+        if config_prefix:
+            # Reuse existing data CSV — load it instead of recomputing trend
+            existing_csv = OUTPUT_DIR / f"config_{ens['name']}_data.csv"
+            if existing_csv.exists():
+                print(f"\n  Loading existing data from {existing_csv.name}...")
+                df_xyvtcs = pd.read_csv(existing_csv)
+                print(f"  Loaded {len(df_xyvtcs)} points")
+            else:
+                print(f"\n  WARNING: {existing_csv} not found, computing trend...")
+                df_xyvtcs = compute_trend(df_fl, df_gt, use_subregions=ens['use_subregions'])
+        else:
+            print("\nComputing trend...")
+            df_xyvtcs = compute_trend(df_fl, df_gt, use_subregions=ens['use_subregions'])
+
         print(f"  Total points: {len(df_xyvtcs)}")
         print(f"  Clusters: {df_xyvtcs['cluster'].nunique()}")
 
-        # Fit variograms
+        # Fit variograms (always re-fit with current VARIOGRAM_MODEL)
         print("\nFitting variograms...")
         if ens['anisotropic']:
             df_gamma, vario = fit_anisotropic_variograms(df_fl, use_subregions=ens['use_subregions'])
@@ -479,43 +525,29 @@ def main():
             ensemble_name=ens['name'],
             use_subregions=ens['use_subregions'],
             df_gamma=df_gamma,
-            vario=vario
+            vario=vario,
+            config_prefix=config_prefix,
+            data_ensemble_name=ens['name'],  # always reference original data CSV
         )
 
     # Print summary
+    prefix_label = f" (prefix: {config_prefix})" if config_prefix else ""
     print("\n" + "=" * 70)
-    print("SUMMARY - 6 ENSEMBLE CONFIGS CREATED")
+    print(f"SUMMARY - 6 ENSEMBLE CONFIGS CREATED{prefix_label}")
     print("=" * 70)
-    print("""
-    Each ensemble generates two files:
-    - config_{name}.json: Configuration parameters (variograms, grid info)
-    - config_{name}_data.csv: DataFrame with grid points and observations
+    print(f"""
+    Variogram model: {VARIOGRAM_MODEL}
 
-    1. config_iso_subregions_dense.json
-       - Isotropic variograms, cluster-specific
-       - Dense flight lines (spacing=4, gap=3)
+    Each ensemble generates:
+    - config_{config_prefix}{{name}}.json: Configuration parameters (variograms, grid info)
+    {'- Reusing existing data CSVs' if config_prefix else '- config_{name}_data.csv: DataFrame with grid points and observations'}
 
-    2. config_iso_global_dense.json
-       - Isotropic variograms, single global (okrige_sgs)
-       - Dense flight lines
-
-    3. config_aniso_subregions_dense.json
-       - Anisotropic variograms, cluster-specific
-       - Dense flight lines
-
-    4. config_aniso_global_dense.json
-       - Anisotropic variograms, single global (okrige_sgs)
-       - Dense flight lines
-
-    5. config_iso_subregions_medium.json
-       - Isotropic variograms, cluster-specific
-       - Medium flight lines (spacing=6, gap=5)
-       - Compare with #1 and #6 to assess flight line density effect
-
-    6. config_iso_subregions_sparse.json
-       - Isotropic variograms, cluster-specific
-       - Sparse flight lines (spacing=8, gap=7)
-       - Compare with #1 to assess flight line density effect
+    1. config_{config_prefix}iso_subregions_dense.json
+    2. config_{config_prefix}iso_global_dense.json
+    3. config_{config_prefix}aniso_subregions_dense.json
+    4. config_{config_prefix}aniso_global_dense.json
+    5. config_{config_prefix}iso_subregions_medium.json
+    6. config_{config_prefix}iso_subregions_sparse.json
     """)
 
     print("To run all ensembles, use:")
