@@ -8,6 +8,7 @@ Designed for use on HPC (Sherlock) with SLURM.
 Methods:
 - Ordinary Kriging (deterministic)
 - SGSIM (stochastic, multiple realizations)
+- Cluster SGS (stochastic, per-cluster variograms, no multigrid)
 
 Usage:
     # Run kriging only
@@ -16,7 +17,10 @@ Usage:
     # Run SGSIM realizations
     python run_standard_geostats.py --config config.json --method sgsim --start 0 --end 100 --output sgsim_results.nc
 
-    # Run both
+    # Run cluster SGS realizations (per-cluster variograms, single pass)
+    python run_standard_geostats.py --config config.json --method cluster_sgs --start 0 --end 100 --output cluster_sgs_results.nc
+
+    # Run both kriging and sgsim
     python run_standard_geostats.py --config config.json --method both --start 0 --end 100 --output-dir results/
 """
 
@@ -156,6 +160,46 @@ def fit_variogram(df_obs: pd.DataFrame, config: dict) -> list:
     print(f"Fitted variogram: range={range_param:.2f}, sill={sill:.4f}, nugget={nugget:.4f}")
 
     return vario
+
+
+def fit_cluster_variograms(df_obs: pd.DataFrame, config: dict) -> pd.DataFrame:
+    """
+    Fit a separate variogram per cluster on NST-transformed observation data.
+
+    Returns
+    -------
+    df_gamma : pd.DataFrame
+        DataFrame with one row per cluster, containing a 'Variogram' column
+        where each entry is [azimuth, nugget, major_range, minor_range, sill, vtype].
+    """
+    maxlag = config.get('maxlag', 40)
+    n_lags = config.get('n_lags', 40)
+    model = config.get('variogram_model', 'spherical')
+
+    clusters = sorted(df_obs['cluster'].unique())
+    print(f"\nFitting per-cluster {model} variograms (maxlag={maxlag}, n_lags={n_lags})...")
+    print(f"  Clusters: {clusters}")
+
+    variograms = []
+    for cluster_id in clusters:
+        df_clust = df_obs[df_obs['cluster'] == cluster_id]
+        coords = df_clust[['x', 'y']].values
+        values = df_clust['nval'].values
+
+        print(f"  Cluster {cluster_id}: {len(df_clust)} observations")
+
+        V = Variogram(coords, values, maxlag=maxlag, n_lags=n_lags, model=model)
+        range_param, sill, nugget = V.parameters
+
+        azimuth = 0.0  # Isotropic
+        vtype = model.capitalize()
+        vario = [azimuth, nugget, range_param, range_param, sill, vtype]
+
+        print(f"    range={range_param:.2f}, sill={sill:.4f}, nugget={nugget:.4f}")
+        variograms.append(vario)
+
+    df_gamma = pd.DataFrame({'Variogram': variograms})
+    return df_gamma
 
 
 # =============================================================================
@@ -306,6 +350,92 @@ def run_sgsim(df_obs: pd.DataFrame, pred_grid: np.ndarray, vario: list,
 
 
 # =============================================================================
+# CLUSTER SGS
+# =============================================================================
+
+def run_cluster_sgs(df_obs: pd.DataFrame, pred_grid: np.ndarray,
+                    df_gamma: pd.DataFrame,
+                    grid_shape: tuple, x_coords: np.ndarray, y_coords: np.ndarray,
+                    nst_trans, config: dict,
+                    start_idx: int, end_idx: int, seed_offset: int = 0) -> xr.Dataset:
+    """
+    Run cluster-specific SGS realizations (per-cluster variograms, single pass).
+
+    Same workflow as SGSIM but uses cluster_sgs with per-cluster variograms
+    instead of okrige_sgs with a single global variogram.
+    """
+    rows, cols = grid_shape
+    k = config.get('num_points', 10)
+    rad = config.get('radius', 40)
+    n_realizations = end_idx - start_idx
+
+    print(f"\nRunning Cluster SGS realizations {start_idx} to {end_idx - 1}...")
+    print(f"  Neighbors: {k}")
+    print(f"  Search radius: {rad}")
+    print(f"  Clusters: {sorted(df_obs['cluster'].unique())}")
+    print(f"  Variograms per cluster:")
+    for i, row in df_gamma.iterrows():
+        print(f"    Cluster {i}: {row['Variogram']}")
+
+    # Pre-allocate arrays
+    realizations_norm = np.full((n_realizations, rows, cols), np.nan, dtype=np.float32)
+    realizations_trans = np.full((n_realizations, rows, cols), np.nan, dtype=np.float32)
+
+    for i, real_idx in enumerate(range(start_idx, end_idx)):
+        print(f"  [{datetime.now().strftime('%H:%M:%S')}] Realization {real_idx} ({i+1}/{n_realizations})")
+
+        # Set seed for reproducibility (cluster_sgs uses np.random internally)
+        np.random.seed(real_idx + seed_offset)
+
+        try:
+            sim = gs.Interpolation.cluster_sgs(
+                pred_grid, df_obs, 'x', 'y', 'nval', 'cluster',
+                k, df_gamma, rad
+            )
+
+            # Back-transform
+            sim_trans = nst_trans.inverse_transform(sim.reshape(-1, 1)).ravel()
+
+            # Store
+            realizations_norm[i] = sim.reshape(rows, cols)
+            realizations_trans[i] = sim_trans.reshape(rows, cols)
+
+        except Exception as e:
+            print(f"    ERROR: {e}")
+            continue
+
+    # Create dataset
+    realization_indices = np.arange(start_idx, end_idx)
+
+    ds = xr.Dataset(
+        data_vars={
+            'simulated': (['realization', 'y', 'x'], realizations_trans),
+            'simulated_norm': (['realization', 'y', 'x'], realizations_norm),
+        },
+        coords={
+            'realization': realization_indices,
+            'y': y_coords,
+            'x': x_coords,
+        },
+        attrs={
+            'method': 'Cluster SGS',
+            'description': 'Cluster-specific SGS via GStatSim (per-cluster variograms, no multigrid)',
+            'created': datetime.now().isoformat(),
+            'start_realization': start_idx,
+            'end_realization': end_idx,
+            'n_realizations': n_realizations,
+            'neighbors': k,
+            'search_radius': rad,
+            'n_clusters': len(df_gamma),
+        }
+    )
+
+    print(f"  Cluster SGS complete: {n_realizations} realizations")
+
+    return ds
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -313,7 +443,7 @@ def main():
     parser = argparse.ArgumentParser(description='Run standard geostatistical methods')
     parser.add_argument('--config', type=str, required=True,
                         help='Path to JSON configuration file')
-    parser.add_argument('--method', type=str, choices=['kriging', 'sgsim', 'both'],
+    parser.add_argument('--method', type=str, choices=['kriging', 'sgsim', 'cluster_sgs', 'both'],
                         default='both', help='Method to run')
     parser.add_argument('--start', type=int, default=0,
                         help='Starting realization index for SGSIM')
@@ -337,41 +467,58 @@ def main():
     print("\nPreparing data...")
     df_obs, pred_grid, grid_shape, x_coords, y_coords, nst_trans = prepare_data(config)
 
-    # Fit variogram
-    vario = fit_variogram(df_obs, config)
-
     # Run methods
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.method in ['kriging', 'both']:
-        ds_krige = run_kriging(
-            df_obs, pred_grid, vario, grid_shape,
-            x_coords, y_coords, nst_trans, config
-        )
+    if args.method == 'cluster_sgs':
+        # Cluster SGS: fit per-cluster variograms, then simulate
+        df_gamma = fit_cluster_variograms(df_obs, config)
 
-        if args.method == 'kriging' and args.output:
-            output_path = args.output
-        else:
-            output_path = output_dir / 'kriging_result.nc'
-
-        print(f"\nSaving kriging results to {output_path}")
-        ds_krige.to_netcdf(output_path)
-
-    if args.method in ['sgsim', 'both']:
-        ds_sgsim = run_sgsim(
-            df_obs, pred_grid, vario, grid_shape,
+        ds_csgs = run_cluster_sgs(
+            df_obs, pred_grid, df_gamma, grid_shape,
             x_coords, y_coords, nst_trans, config,
             args.start, args.end, args.seed_offset
         )
 
-        if args.method == 'sgsim' and args.output:
-            output_path = args.output
-        else:
-            output_path = output_dir / f'sgsim_realizations_{args.start}_{args.end}.nc'
+        output_path = args.output if args.output else \
+            output_dir / f'cluster_sgs_realizations_{args.start}_{args.end}.nc'
 
-        print(f"\nSaving SGSIM results to {output_path}")
-        ds_sgsim.to_netcdf(output_path)
+        print(f"\nSaving Cluster SGS results to {output_path}")
+        ds_csgs.to_netcdf(output_path)
+
+    else:
+        # Kriging / SGSIM: fit single global variogram
+        vario = fit_variogram(df_obs, config)
+
+        if args.method in ['kriging', 'both']:
+            ds_krige = run_kriging(
+                df_obs, pred_grid, vario, grid_shape,
+                x_coords, y_coords, nst_trans, config
+            )
+
+            if args.method == 'kriging' and args.output:
+                output_path = args.output
+            else:
+                output_path = output_dir / 'kriging_result.nc'
+
+            print(f"\nSaving kriging results to {output_path}")
+            ds_krige.to_netcdf(output_path)
+
+        if args.method in ['sgsim', 'both']:
+            ds_sgsim = run_sgsim(
+                df_obs, pred_grid, vario, grid_shape,
+                x_coords, y_coords, nst_trans, config,
+                args.start, args.end, args.seed_offset
+            )
+
+            if args.method == 'sgsim' and args.output:
+                output_path = args.output
+            else:
+                output_path = output_dir / f'sgsim_realizations_{args.start}_{args.end}.nc'
+
+            print(f"\nSaving SGSIM results to {output_path}")
+            ds_sgsim.to_netcdf(output_path)
 
     print("\nDone!")
 
