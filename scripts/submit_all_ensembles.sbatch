@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
-#SBATCH --array=0-49
+#SBATCH --array=0-59
 #SBATCH --output=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/mgsim_ens_%A_%a.out
 #SBATCH --error=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/mgsim_ens_%A_%a.err
 
@@ -14,12 +14,13 @@
 # MGSIM 5-Ensemble Batch Processing
 # ============================================================================
 #
-# This script runs 5 ensembles x N realizations each:
+# This script runs 6 ensembles x N realizations each:
 #   - iso_subregions_dense: Isotropic + cluster-specific variograms + dense FL
 #   - iso_global_dense: Isotropic + single global variogram + dense FL
 #   - aniso_subregions_dense: Anisotropic + cluster-specific variograms + dense FL
 #   - aniso_global_dense: Anisotropic + single global variogram + dense FL
 #   - iso_subregions_sparse: Isotropic + cluster-specific + sparse FL (comparison)
+#   - iso_subregions_medium: Isotropic + cluster-specific + medium FL (comparison)
 #
 # Array structure:
 #   Array tasks 0-9:   iso_subregions_dense   (100 realizations each)
@@ -27,8 +28,9 @@
 #   Array tasks 20-29: aniso_subregions_dense (100 realizations each)
 #   Array tasks 30-39: aniso_global_dense     (100 realizations each)
 #   Array tasks 40-49: iso_subregions_sparse  (100 realizations each)
+#   Array tasks 50-59: iso_subregions_medium  (100 realizations each)
 #
-# Total: 50 array tasks x 100 = 5000 realizations (1000 per ensemble)
+# Total: 60 array tasks x 100 = 6000 realizations (1000 per ensemble)
 #
 # ============================================================================
 
@@ -51,6 +53,7 @@ case $ENSEMBLE_IDX in
     2) ENSEMBLE_NAME="aniso_subregions_dense" ;;
     3) ENSEMBLE_NAME="aniso_global_dense" ;;
     4) ENSEMBLE_NAME="iso_subregions_sparse" ;;
+    5) ENSEMBLE_NAME="iso_subregions_medium" ;;
 esac
 
 # Config files are in ../configs/ relative to scripts/

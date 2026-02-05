@@ -6,25 +6,26 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
-#SBATCH --array=0-49
+#SBATCH --array=0-59
 #SBATCH --output=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/sph_mgsim_%A_%a.out
 #SBATCH --error=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/sph_mgsim_%A_%a.err
 
 # ============================================================================
-# MGSIM 5-Ensemble Batch Processing — SPHERICAL VARIOGRAM
+# MGSIM 6-Ensemble Batch Processing — SPHERICAL VARIOGRAM
 # ============================================================================
 #
 # Same structure as submit_all_ensembles.sbatch but uses spherical variogram
 # configs (config_sph_*.json) and saves results to sph_vgram/ subdirectory.
 #
-# Array structure (50 tasks):
+# Array structure (60 tasks):
 #   Array tasks 0-9:   sph_iso_subregions_dense   (100 realizations each)
 #   Array tasks 10-19: sph_iso_global_dense       (100 realizations each)
 #   Array tasks 20-29: sph_aniso_subregions_dense (100 realizations each)
 #   Array tasks 30-39: sph_aniso_global_dense     (100 realizations each)
 #   Array tasks 40-49: sph_iso_subregions_sparse  (100 realizations each)
+#   Array tasks 50-59: sph_iso_subregions_medium  (100 realizations each)
 #
-# Total: 50 array tasks x 100 = 5000 realizations (1000 per ensemble)
+# Total: 60 array tasks x 100 = 6000 realizations (1000 per ensemble)
 #
 # ============================================================================
 
@@ -52,6 +53,7 @@ case $ENSEMBLE_IDX in
     2) ENSEMBLE_NAME="aniso_subregions_dense" ;;
     3) ENSEMBLE_NAME="aniso_global_dense" ;;
     4) ENSEMBLE_NAME="iso_subregions_sparse" ;;
+    5) ENSEMBLE_NAME="iso_subregions_medium" ;;
 esac
 
 CONFIG_FILE="${CONFIG_DIR}/config_sph_${ENSEMBLE_NAME}.json"
