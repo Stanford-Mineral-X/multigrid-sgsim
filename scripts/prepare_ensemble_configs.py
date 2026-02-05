@@ -62,7 +62,7 @@ LINESPACING = 5
 
 # Variogram fitting parameters
 MAXLAG = 40
-N_LAGS = 20
+N_LAGS = 40
 VARIOGRAM_MODEL = 'exponential'
 
 # Directional variogram parameters (for anisotropic cases)

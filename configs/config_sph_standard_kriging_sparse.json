@@ -262,7 +262,7 @@
   "radius": 40,
   "variogram_model": "spherical",
   "maxlag": 40,
-  "n_lags": 20,
+  "n_lags": 40,
   "metadata": {
     "method": "kriging",
     "dataset": "sparse",
