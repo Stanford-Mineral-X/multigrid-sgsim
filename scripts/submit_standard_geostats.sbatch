@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=16G
-#SBATCH --array=0-21
+#SBATCH --array=0-32
 #SBATCH --output=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/std_geostats_%A_%a.out
 #SBATCH --error=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/std_geostats_%A_%a.err
 
@@ -17,11 +17,13 @@
 # This script runs Kriging and SGSIM using the SAME config files as MGSIM
 # to ensure a fair comparison (same data, same grid, same variograms).
 #
-# Array structure (22 tasks):
+# Array structure (33 tasks):
 #   Task 0:       Kriging for dense data
 #   Task 1:       Kriging for sparse data
-#   Tasks 2-11:   SGSIM realizations for dense (100 per task = 1000 total)
-#   Tasks 12-21:  SGSIM realizations for sparse (100 per task = 1000 total)
+#   Task 2:       Kriging for medium data
+#   Tasks 3-12:   SGSIM realizations for dense (100 per task = 1000 total)
+#   Tasks 13-22:  SGSIM realizations for sparse (100 per task = 1000 total)
+#   Tasks 23-32:  SGSIM realizations for medium (100 per task = 1000 total)
 #
 # We use the iso_subregions configs since Kriging/SGSIM use a single global
 # variogram anyway (not cluster-specific).
@@ -41,8 +43,10 @@ CONFIG_DIR="${REPO_DIR}/configs"
 # Dedicated standard geostats configs (exponential variogram, radius=40, k=10)
 CONFIG_KRIGING_DENSE="${CONFIG_DIR}/config_standard_kriging_dense.json"
 CONFIG_KRIGING_SPARSE="${CONFIG_DIR}/config_standard_kriging_sparse.json"
+CONFIG_KRIGING_MEDIUM="${CONFIG_DIR}/config_standard_kriging_medium.json"
 CONFIG_SGSIM_DENSE="${CONFIG_DIR}/config_standard_sgsim_dense.json"
 CONFIG_SGSIM_SPARSE="${CONFIG_DIR}/config_standard_sgsim_sparse.json"
+CONFIG_SGSIM_MEDIUM="${CONFIG_DIR}/config_standard_sgsim_medium.json"
 
 # --- ENVIRONMENT SETUP ---
 echo "=============================================="
@@ -65,6 +69,7 @@ export PYTHONUNBUFFERED=1
 # Create output directories
 mkdir -p ${OUTPUT_DIR}/dense
 mkdir -p ${OUTPUT_DIR}/sparse
+mkdir -p ${OUTPUT_DIR}/medium
 
 # Create log directory for this job
 mkdir -p /oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_${SLURM_ARRAY_JOB_ID}
@@ -99,9 +104,21 @@ elif [ ${TASK_ID} -eq 1 ]; then
         --method kriging \
         --output ${OUTPUT_DIR}/sparse/kriging_result.nc
 
-elif [ ${TASK_ID} -ge 2 ] && [ ${TASK_ID} -le 11 ]; then
-    # Tasks 2-11: SGSIM for dense
-    SGSIM_TASK=$((TASK_ID - 2))  # 0-9
+elif [ ${TASK_ID} -eq 2 ]; then
+    # Task 2: Kriging for medium
+    echo ""
+    echo "=== Running Kriging on MEDIUM data ==="
+    echo "Config: ${CONFIG_KRIGING_MEDIUM}"
+    echo ""
+
+    python run_standard_geostats.py \
+        --config ${CONFIG_KRIGING_MEDIUM} \
+        --method kriging \
+        --output ${OUTPUT_DIR}/medium/kriging_result.nc
+
+elif [ ${TASK_ID} -ge 3 ] && [ ${TASK_ID} -le 12 ]; then
+    # Tasks 3-12: SGSIM for dense
+    SGSIM_TASK=$((TASK_ID - 3))  # 0-9
     START=$((SGSIM_TASK * REALIZATIONS_PER_TASK))
     END=$((START + REALIZATIONS_PER_TASK))
 
@@ -123,9 +140,9 @@ elif [ ${TASK_ID} -ge 2 ] && [ ${TASK_ID} -le 11 ]; then
         --end ${END} \
         --output ${OUTPUT_DIR}/dense/sgsim_realizations_${START}_${END}.nc
 
-elif [ ${TASK_ID} -ge 12 ] && [ ${TASK_ID} -le 21 ]; then
-    # Tasks 12-21: SGSIM for sparse
-    SGSIM_TASK=$((TASK_ID - 12))  # 0-9
+elif [ ${TASK_ID} -ge 13 ] && [ ${TASK_ID} -le 22 ]; then
+    # Tasks 13-22: SGSIM for sparse
+    SGSIM_TASK=$((TASK_ID - 13))  # 0-9
     START=$((SGSIM_TASK * REALIZATIONS_PER_TASK))
     END=$((START + REALIZATIONS_PER_TASK))
 
@@ -146,6 +163,30 @@ elif [ ${TASK_ID} -ge 12 ] && [ ${TASK_ID} -le 21 ]; then
         --start ${START} \
         --end ${END} \
         --output ${OUTPUT_DIR}/sparse/sgsim_realizations_${START}_${END}.nc
+
+elif [ ${TASK_ID} -ge 23 ] && [ ${TASK_ID} -le 32 ]; then
+    # Tasks 23-32: SGSIM for medium
+    SGSIM_TASK=$((TASK_ID - 23))  # 0-9
+    START=$((SGSIM_TASK * REALIZATIONS_PER_TASK))
+    END=$((START + REALIZATIONS_PER_TASK))
+
+    # Handle last task
+    if [ ${SGSIM_TASK} -eq $((SGSIM_TASKS_PER_DATASET - 1)) ]; then
+        END=${REALIZATIONS_PER_ENSEMBLE}
+    fi
+
+    echo ""
+    echo "=== Running SGSIM on MEDIUM data ==="
+    echo "Config: ${CONFIG_SGSIM_MEDIUM}"
+    echo "Realizations: ${START} to $((END - 1))"
+    echo ""
+
+    python run_standard_geostats.py \
+        --config ${CONFIG_SGSIM_MEDIUM} \
+        --method sgsim \
+        --start ${START} \
+        --end ${END} \
+        --output ${OUTPUT_DIR}/medium/sgsim_realizations_${START}_${END}.nc
 
 else
     echo "ERROR: Unknown task ID ${TASK_ID}"
