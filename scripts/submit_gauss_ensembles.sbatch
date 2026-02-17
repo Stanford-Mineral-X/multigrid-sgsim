@@ -1,0 +1,117 @@
+#!/bin/bash
+#SBATCH --job-name=gauss_mgsim
+#SBATCH --partition=serc
+#SBATCH --time=24:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=8G
+#SBATCH --array=0-59
+#SBATCH --output=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/gauss_mgsim_%A_%a.out
+#SBATCH --error=/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_%A/gauss_mgsim_%A_%a.err
+
+# ============================================================================
+# MGSIM 6-Ensemble Batch Processing — GAUSSIAN VARIOGRAM
+# ============================================================================
+#
+# Same structure as submit_all_ensembles.sbatch but uses Gaussian variogram
+# configs (config_gauss_*.json) and saves results to gauss_vgram/ subdirectory.
+#
+# Array structure (60 tasks):
+#   Array tasks 0-9:   gauss_iso_subregions_dense   (100 realizations each)
+#   Array tasks 10-19: gauss_iso_global_dense       (100 realizations each)
+#   Array tasks 20-29: gauss_aniso_subregions_dense (100 realizations each)
+#   Array tasks 30-39: gauss_aniso_global_dense     (100 realizations each)
+#   Array tasks 40-49: gauss_iso_subregions_sparse  (100 realizations each)
+#   Array tasks 50-59: gauss_iso_subregions_medium  (100 realizations each)
+#
+# Total: 60 array tasks x 100 = 6000 realizations (1000 per ensemble)
+#
+# ============================================================================
+
+# --- USER PARAMETERS ---
+REALIZATIONS_PER_ENSEMBLE=1000
+TASKS_PER_ENSEMBLE=10
+OUTPUT_DIR="/oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/results/gauss_vgram"
+
+# Repo layout (works regardless of where sbatch is submitted from)
+REPO_DIR="/oak/stanford/groups/cyaolai/JoshRines/repos/multigrid-sgsim"
+SCRIPT_DIR="${REPO_DIR}/scripts"
+CONFIG_DIR="${REPO_DIR}/configs"
+
+# --- COMPUTED PARAMETERS ---
+REALIZATIONS_PER_TASK=$((REALIZATIONS_PER_ENSEMBLE / TASKS_PER_ENSEMBLE))
+
+# Determine which ensemble and which task within that ensemble
+ENSEMBLE_IDX=$((SLURM_ARRAY_TASK_ID / TASKS_PER_ENSEMBLE))
+TASK_WITHIN_ENSEMBLE=$((SLURM_ARRAY_TASK_ID % TASKS_PER_ENSEMBLE))
+
+# Map ensemble index to name (Gaussian configs use gauss_ prefix)
+case $ENSEMBLE_IDX in
+    0) ENSEMBLE_NAME="iso_subregions_dense" ;;
+    1) ENSEMBLE_NAME="iso_global_dense" ;;
+    2) ENSEMBLE_NAME="aniso_subregions_dense" ;;
+    3) ENSEMBLE_NAME="aniso_global_dense" ;;
+    4) ENSEMBLE_NAME="iso_subregions_sparse" ;;
+    5) ENSEMBLE_NAME="iso_subregions_medium" ;;
+esac
+
+CONFIG_FILE="${CONFIG_DIR}/config_gauss_${ENSEMBLE_NAME}.json"
+
+# Calculate realization range for this task
+START_IDX=$((TASK_WITHIN_ENSEMBLE * REALIZATIONS_PER_TASK))
+END_IDX=$((START_IDX + REALIZATIONS_PER_TASK))
+
+# Handle last task in ensemble
+if [ $TASK_WITHIN_ENSEMBLE -eq $((TASKS_PER_ENSEMBLE - 1)) ]; then
+    END_IDX=$REALIZATIONS_PER_ENSEMBLE
+fi
+
+# Output file
+ENSEMBLE_OUTPUT_DIR="${OUTPUT_DIR}/${ENSEMBLE_NAME}"
+OUTPUT_FILE="${ENSEMBLE_OUTPUT_DIR}/realizations_${START_IDX}_${END_IDX}.nc"
+
+# --- ENVIRONMENT SETUP ---
+echo "=============================================="
+echo "MGSIM Ensemble Processing (GAUSSIAN VARIOGRAM)"
+echo "=============================================="
+echo "Job ID: $SLURM_JOB_ID"
+echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
+echo "Node: $SLURMD_NODENAME"
+echo "Start time: $(date)"
+echo ""
+echo "Ensemble: gauss_$ENSEMBLE_NAME"
+echo "Config: $CONFIG_FILE"
+echo "Realizations: $START_IDX to $((END_IDX - 1))"
+echo "Output: $OUTPUT_FILE"
+echo "=============================================="
+
+# Load environment
+ml system
+ml python/3.12.1
+source /oak/stanford/groups/cyaolai/JoshRines/mineralx/venvs/venv_mgsim/bin/activate
+
+# Force unbuffered Python output (for live log viewing)
+export PYTHONUNBUFFERED=1
+
+# Create output directories
+mkdir -p $ENSEMBLE_OUTPUT_DIR
+
+# Create log directory for this job
+mkdir -p /oak/stanford/groups/cyaolai/JoshRines/sherlock/sherlock_multigrid/logs/job_${SLURM_ARRAY_JOB_ID}
+
+# Change to script directory
+cd $SCRIPT_DIR
+
+# --- RUN MGSIM ---
+python run_mgsim_batch.py \
+    --config $CONFIG_FILE \
+    --start $START_IDX \
+    --end $END_IDX \
+    --output $OUTPUT_FILE
+
+# --- COMPLETION ---
+echo ""
+echo "=============================================="
+echo "Completed at: $(date)"
+echo "=============================================="
