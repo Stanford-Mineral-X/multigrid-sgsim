@@ -18,6 +18,7 @@ import sys
 import os
 from pathlib import Path
 from datetime import datetime
+from sklearn.preprocessing import QuantileTransformer
 
 # Add src directory to path
 script_dir = Path(__file__).parent
@@ -66,6 +67,27 @@ def load_config(config_path: str) -> dict:
     y_coords = np.array(config['y_coords'])
     grid_shape = tuple(config['grid_shape'])
 
+    # Fit NST from observation residuals if use_nst=True
+    use_nst = config.get('use_nst', False)
+    nst_trans = None
+
+    if use_nst:
+        print("  Fitting NST from observation residuals...")
+        obs_mask = df_xyvtcs['set'] == 1
+        obs_residuals = (df_xyvtcs.loc[obs_mask, 'value'] - df_xyvtcs.loc[obs_mask, 'trend']).values
+        obs_residuals = obs_residuals[np.isfinite(obs_residuals)].reshape(-1, 1)
+
+        n_quantiles = config.get('nst_n_quantiles', min(1000, len(obs_residuals)))
+        nst_trans = QuantileTransformer(
+            output_distribution='normal',
+            n_quantiles=n_quantiles
+        )
+        nst_trans.fit(obs_residuals)
+
+        nst_vals = nst_trans.transform(obs_residuals).ravel()
+        print(f"  NST fitted on {len(obs_residuals)} obs (n_quantiles={n_quantiles})")
+        print(f"  NST range: [{nst_vals.min():.2f}, {nst_vals.max():.2f}]")
+
     # Build the config dict expected by run_realizations
     return {
         'df_xyvtcs': df_xyvtcs,
@@ -75,8 +97,8 @@ def load_config(config_path: str) -> dict:
         'grid_shape': grid_shape,
         'x_coords': x_coords,
         'y_coords': y_coords,
-        'use_nst': config.get('use_nst', False),
-        'nst_trans': None,  # NST not supported in portable format
+        'use_nst': use_nst,
+        'nst_trans': nst_trans,
         'mgsim_kwargs': config.get('mgsim_kwargs', {}),
         'metadata': config.get('metadata', {}),
     }
@@ -145,21 +167,30 @@ def run_realizations(config: dict, start_idx: int, end_idx: int, seed_offset: in
         try:
             # Run MGSIM - pass either df_gamma (subregions) or vario (global)
             if use_nst and nst_trans is not None:
+                # Extract NST-specific kwargs that mgsim doesn't accept
+                nst_kwargs = {k: mgsim_kwargs[k] for k in ('clip_nst', 'clip_percentile')
+                              if k in mgsim_kwargs}
+                common_kwargs = {k: v for k, v in mgsim_kwargs.items()
+                                 if k not in ('clip_nst', 'clip_percentile')}
                 df_result = mgsim_nst(
                     mg_resols=mg_resols,
                     df_xyvtcs=df_xyvtcs.copy(),
                     df_gamma=df_gamma,
                     vario=vario,
                     nst_trans=nst_trans,
-                    **mgsim_kwargs
+                    **common_kwargs,
+                    **nst_kwargs,
                 )
             else:
+                # Strip NST-only kwargs for non-NST mode
+                non_nst_kwargs = {k: v for k, v in mgsim_kwargs.items()
+                                  if k not in ('clip_nst', 'clip_percentile')}
                 df_result = mgsim(
                     mg_resols=mg_resols,
                     df_xyvtcs=df_xyvtcs.copy(),
                     df_gamma=df_gamma,
                     vario=vario,
-                    **mgsim_kwargs
+                    **non_nst_kwargs
                 )
 
             # Extract the newtrend column and reshape to grid
