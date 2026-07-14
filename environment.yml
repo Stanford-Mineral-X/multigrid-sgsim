@@ -1,0 +1,31 @@
+name: mgsim
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.9
+
+  # scientific
+  - numpy>=1.24
+  - pandas>=2
+  - xarray>=2023.8
+  - matplotlib>=3.7
+  - scipy>=1.10
+
+  # machine learning
+  - scikit-learn>=1.3
+
+  # image utilities
+  - scikit-image>=0.21
+
+  # parallelization
+  - joblib>=1.3
+
+  # jupyter support
+  - ipykernel
+
+  # pip-only packages
+  - pip
+  - pip:
+    - gstatsim>=1.2
+    - scikit-gstat>=1.0
+    - -e .  # install local package in editable mode

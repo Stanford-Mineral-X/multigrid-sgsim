@@ -21,6 +21,8 @@ def mgsim(
     nst_trans: Optional[QuantileTransformer] = None,
     clip_nst: bool = True,
     clip_percentile: float = 100.0,
+    seed: Optional[int] = None,
+    quiet: bool = True,
     debug: bool = False,
 ):
     """
@@ -68,6 +70,14 @@ def mgsim(
     clip_percentile : float
         NST mode only. Percentile for the clipping bounds (default 100.0 = full
         observed range; e.g. 98.0 clips to the 1st-99th percentile).
+    seed : int, optional
+        Seed for the random number generator. A single generator is threaded
+        through the multigrid subsampling and the SGS calls, so a given seed
+        reproduces a realization exactly. Default None draws fresh entropy
+        (every call gives a different realization). Requires gstatsim >= 1.2.
+    quiet : bool
+        If True (default), suppress gstatsim's per-iteration progress bars.
+        MGSIM's own iteration messages are always printed.
     debug : bool
         If True, print debugging statistics at each iteration.
 
@@ -94,6 +104,10 @@ def mgsim(
     use_nst = nst_trans is not None
     if zz is None:
         zz = 'Nresidual' if use_nst else 'residual'
+
+    # single generator threaded through subsampling and SGS: state advances
+    # across iterations, so one seed fixes the whole realization
+    rng = np.random.default_rng(seed)
 
     # keep a copy of ALL rows
     df_all = df_xyvtcs.copy()
@@ -154,7 +168,8 @@ def mgsim(
 
         # mg sample residuals at set resolution
         if i < len(mg_resols) - 1:
-            df_mgsmpl = subsample_dataframe(df_obspts, column_for_sampling='residual', spacing=mg_resol)
+            df_mgsmpl = subsample_dataframe(df_obspts, column_for_sampling='residual', spacing=mg_resol,
+                                            random_state=rng)
         else:
             df_mgsmpl = df_obspts.copy()  # last iteration uses all obspts
 
@@ -167,18 +182,22 @@ def mgsim(
         if sgs_or_krige == 'sgs':
             if use_global:
                 # Single variogram for entire field (no clusters) - use okrige_sgs
-                mgsgs = gs.Interpolation.okrige_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius)
+                mgsgs = gs.Interpolation.okrige_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius,
+                                                    seed=rng, quiet=quiet)
             else:
                 # Cluster-specific variograms - use cluster_sgs
-                mgsgs = gs.Interpolation.cluster_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, kk, num_points, df_gamma, radius)
+                mgsgs = gs.Interpolation.cluster_sgs(pred_xy_grid, df_mgsmpl, xx, yy, zz, kk, num_points, df_gamma, radius,
+                                                     seed=rng, quiet=quiet)
         elif sgs_or_krige == 'krige':
             # Ordinary kriging (no stochastic component)
             if use_global:
-                mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius)
+                mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario, radius,
+                                                   quiet=quiet)
             else:
                 # For kriging with clusters, extract first variogram
                 vario_k = df_gamma['Variogram'][0]
-                mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario_k, radius)
+                mgsgs, _ = gs.Interpolation.okrige(pred_xy_grid, df_mgsmpl, xx, yy, zz, num_points, vario_k, radius,
+                                                   quiet=quiet)
 
         if use_nst:
             # convert to array for processing
