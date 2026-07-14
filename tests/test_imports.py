@@ -16,9 +16,9 @@ def test_imports():
     from multigrid_sgsim import mgsim, sampling, trendmaking, utils, variograms
     from multigrid_sgsim.utils import geosoft_cmap_k65
     from multigrid_sgsim.variograms import cluster_variogram
-    from multigrid_sgsim.mgsim import mgsim as mgsim_fn, mgsim_nst
+    from multigrid_sgsim.mgsim import mgsim as mgsim_fn
 
     # smoke test
     geosoft_cmap_k65()
     assert callable(cluster_variogram)
-    assert callable(mgsim_fn) and callable(mgsim_nst)
+    assert callable(mgsim_fn)
