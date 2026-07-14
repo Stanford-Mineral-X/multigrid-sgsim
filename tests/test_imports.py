@@ -13,10 +13,12 @@ def test_imports():
 
     # local package
     import multigrid_sgsim
-    from multigrid_sgsim import mgsim, sampling, trendmaking, utils
-    from multigrid_sgsim.utils import geosoft_cmap_k65, cluster_variogram
+    from multigrid_sgsim import mgsim, sampling, trendmaking, utils, variograms
+    from multigrid_sgsim.utils import geosoft_cmap_k65
+    from multigrid_sgsim.variograms import cluster_variogram
+    from multigrid_sgsim.mgsim import mgsim as mgsim_fn, mgsim_nst
 
     # smoke test
     geosoft_cmap_k65()
     assert callable(cluster_variogram)
-    assert hasattr(mgsim, "__name__")  # trivial sanity
+    assert callable(mgsim_fn) and callable(mgsim_nst)
