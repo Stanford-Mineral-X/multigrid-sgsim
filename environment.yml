@@ -5,7 +5,7 @@ dependencies:
   - python>=3.9
 
   # scientific
-  - numpy>=1.24
+  - numpy>=1.24,<2.4  # gstatsim 1.2.0 breaks on numpy 2.4 scalar-coercion removal
   - pandas>=2
   - xarray>=2023.8
   - matplotlib>=3.7
