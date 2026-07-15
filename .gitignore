@@ -39,3 +39,7 @@ Thumbs.db
 # Example data outputs, scratch, logs, etc.
 *.log
 *.tmp
+
+# --- Demo run outputs ---
+demos/outputs/
+demos/*_executed.ipynb

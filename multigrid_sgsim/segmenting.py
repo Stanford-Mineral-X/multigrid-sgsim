@@ -68,7 +68,7 @@ def asm_energy(grid_in, freqs, n_orient):
     return filtered_final_stack
 
 
-def asm_cluster(filtered_final_stack, k, spatial_weight):
+def asm_cluster(filtered_final_stack, k, spatial_weight, seed=None, n_init=10):
     ## APPLY K-MEANS CLUSTERING ##
     # Use the correct Gabor stack
     n_freqs, n_orients, H, W = filtered_final_stack.shape
@@ -91,11 +91,24 @@ def asm_cluster(filtered_final_stack, k, spatial_weight):
         yy_norm[:, np.newaxis]
     ], axis=1)  # shape: (H*W, 64+2)
 
-    # Step 4: K-means clustering
-    k = k
-    seed = np.random.randint(0, 1e6)
-    kmeans = KMeans(n_clusters=k, max_iter=300, n_init=1, random_state=seed)
-    labels = kmeans.fit_predict(X_aug)
+    # Step 4: K-means clustering (seed=None draws fresh randomness each call).
+    # n_init=10 (default): the best-of-10 winner is a deep optimum that is stable and
+    # reproducible, but most seeds then agree. n_init=1 explores: each seed follows a
+    # single init to its own local optimum, giving diverse candidate segmentations —
+    # at the cost of being sensitive to floating-point runtime state.
+    kmeans = KMeans(n_clusters=k, max_iter=300, n_init=n_init, random_state=seed)
+    kmeans.fit(X_aug)
+
+    # Assign labels from distances rounded to 1e-6: floating-point dust (~1e-12) from
+    # BLAS/allocation differences between runs cannot flip knife-edge boundary pixels.
+    labels = np.round(kmeans.transform(X_aug), 6).argmin(axis=1)
+
+    # Canonical label order (first appearance in raster order): KMeans cluster IDs are
+    # otherwise an arbitrary, run-dependent permutation.
+    first_seen = np.array([np.argmax(labels == c) for c in range(k)])
+    remap = np.empty(k, dtype=labels.dtype)
+    remap[np.argsort(first_seen)] = np.arange(k)
+    labels = remap[labels]
 
     # Step 5: Reconstruct segmentation image
     segmentation = labels.reshape(H, W)

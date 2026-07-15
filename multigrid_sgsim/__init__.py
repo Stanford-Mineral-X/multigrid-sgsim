@@ -1,4 +1,4 @@
-# src/multigrid_sgsim/__init__.py
+# multigrid_sgsim/__init__.py
 
 from .utils import geosoft_cmap_k65
 from .mgsim import mgsim

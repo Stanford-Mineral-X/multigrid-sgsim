@@ -3,19 +3,19 @@ from scipy.interpolate import RBFInterpolator
 import numpy as np
 from .sampling import stratified_sample
 
-def make_trend(fl_xyvc, grid_xyc, smoothing, linespacing):
+def make_trend(fl_xyvc, grid_xyc, smoothing, linespacing, random_state=None):
 
     # agglomerative clustering
     DistanceThreshold = linespacing/2
     LinkageType = 'average'
-    clusteringProgram = AgglomerativeClustering(n_clusters=None, 
-                                                #  affinity='euclidean', 
+    clusteringProgram = AgglomerativeClustering(n_clusters=None,
+                                                #  affinity='euclidean',
                                                 connectivity=None,
                                                 linkage=LinkageType,
                                                 distance_threshold = DistanceThreshold).fit(fl_xyvc[:,:2])
     labels = clusteringProgram.labels_
     clusterAmount = clusteringProgram.n_clusters_
-    stratified_xyv = stratified_sample(fl_xyvc, labels, 1)
+    stratified_xyv = stratified_sample(fl_xyvc, labels, 1, random_state=random_state)
 
     # get x, y, val from stratified sample
     x_stratified = stratified_xyv[:, 0]  # x values
